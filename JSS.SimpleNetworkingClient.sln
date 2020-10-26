@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30114.105
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JSS.SimpleNetworkingClient", "JSS.SimpleNetworkingClient\JSS.SimpleNetworkingClient.csproj", "{1844E8CD-1D34-4618-A6A8-D379050A4374}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Artifacts", "Artifacts", "{8AEE0896-80BA-4775-AA14-CA16344FF44A}"
+	ProjectSection(SolutionItems) = preProject
+		Artifacts\License.md = Artifacts\License.md
+		Artifacts\Readme.md = Artifacts\Readme.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSS.SimpleNetworkingClient.UnitTests", "JSS.SimpleNetworkingClient.UnitTests\JSS.SimpleNetworkingClient.UnitTests.csproj", "{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1844E8CD-1D34-4618-A6A8-D379050A4374}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1844E8CD-1D34-4618-A6A8-D379050A4374}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1844E8CD-1D34-4618-A6A8-D379050A4374}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1844E8CD-1D34-4618-A6A8-D379050A4374}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {66E0487F-7BFE-4083-B125-5E6F412F7888}
+	EndGlobalSection
+EndGlobal
