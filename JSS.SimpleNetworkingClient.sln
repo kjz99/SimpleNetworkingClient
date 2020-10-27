@@ -7,11 +7,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JSS.SimpleNetworkingClient"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Artifacts", "Artifacts", "{8AEE0896-80BA-4775-AA14-CA16344FF44A}"
 	ProjectSection(SolutionItems) = preProject
-		Artifacts\License.md = Artifacts\License.md
-		Artifacts\Readme.md = Artifacts\Readme.md
+		License.md = License.md
+		Readme.md = Readme.md
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSS.SimpleNetworkingClient.UnitTests", "JSS.SimpleNetworkingClient.UnitTests\JSS.SimpleNetworkingClient.UnitTests.csproj", "{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JSS.SimpleNetworkingClient.UnitTests", "JSS.SimpleNetworkingClient.UnitTests\JSS.SimpleNetworkingClient.UnitTests.csproj", "{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
