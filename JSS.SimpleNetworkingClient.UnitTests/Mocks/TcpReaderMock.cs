@@ -14,7 +14,12 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
         public async Task<string> ReadTcpData(TcpClient client)
         {
             _tcpClient = client;
-            return await ReadTcpData();
+            return await base.ReadTcpData();
+        }
+
+        public async Task<string> ReadTcpData(Socket socket)
+        {
+            return await base.ReadTcpData(socket);
         }
 
         public async Task<string> ReadTcpDataWithLength(TcpClient client)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -17,6 +18,7 @@ namespace JSS.SimpleNetworkingClient
     {
         protected int _bufferSize;
         protected TimeSpan _sendReadTimeout;
+        protected int _sendReadTimeoutMicroseconds;
         protected TcpClient _tcpClient;
         private DateTime _timeoutTimer;
 
@@ -36,7 +38,7 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         protected TcpConnectionBase()
         {
-            
+
         }
 
         /// <summary>
@@ -126,25 +128,18 @@ namespace JSS.SimpleNetworkingClient
                 // Read all the data until the tcp connection has been closed
                 while (PollTcpClient())
                 {
-                    // Detect the tcp state and log this if the state changes
-                    // TODO: Use Client.GetSocketState SocketOptionName.PacketInformation
-                    //var state = _tcpClient.Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.UpdateConnectContext);
-                    //byte[] tcpOptions = new byte[1024];
-                    //var sOpts = _tcpClient.Client.GetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.PacketInformation);
-                    _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.UpdateAcceptContext, null);
-
                     // Detect if there is an error on the socket
                     if (_tcpClient.Client.Poll(1, SelectMode.SelectError))
                         throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
 
                     // Detect if the connection has been closed, reset or terminated
-                    if (_tcpClient.Connected == false && _tcpClient.Available == 0)
+                    if (_tcpClient.Client.Connected == false || _tcpClient.Available == 0)
                         break;
 
                     // Check if the read has timed out. The TcpClient has a mechanism for this but it is not relyable
                     if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
                         throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
-                    
+
                     // Read available data, but do not exceed the buffer size in one read
                     var bytesRead = stream.Read(chunckBuffer, 0, _bufferSize);
                     totalBytesRead += bytesRead;
@@ -155,9 +150,54 @@ namespace JSS.SimpleNetworkingClient
             }
         }
 
+        protected async Task<string> ReadTcpData(Socket socket)
+        {
+            SetTimeout();
+            var totalBytesRead = 0;
+            var chunckBuffer = new byte[_bufferSize];
+            List<byte> totalBuffer = new List<byte>();
+
+            // Read all the data until the tcp connection has been closed
+            while (socket.Poll(500000, SelectMode.SelectWrite))
+            {
+                // Detect the tcp state and log this if the state changes
+                // TODO: Use Client.GetSocketState SocketOptionName.PacketInformation
+                //var state = _tcpClient.Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.UpdateConnectContext);
+                //byte[] tcpOptions = new byte[1024];
+                //var sOpts = _tcpClient.Client.GetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.PacketInformation);
+                //socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.UpdateAcceptContext, null);
+
+                // Detect if there is an error on the socket
+                if (socket.Poll(1, SelectMode.SelectError))
+                    throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
+
+                // Detect if the connection has been closed, reset or terminated
+                if (socket.Connected == false || socket.Available == 0)
+                    break;
+
+                // Check if the read has timed out. The TcpClient has a mechanism for this but it is not relyable
+                if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
+                    throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+
+                // Read available data, but do not exceed the buffer size in one read
+                var bytesRead = socket.Receive(chunckBuffer); // .Read(chunckBuffer, 0, _bufferSize);
+                totalBytesRead += bytesRead;
+                totalBuffer.AddRange(chunckBuffer.Take(bytesRead).AsEnumerable());
+            }
+
+            return Encoding.UTF8.GetString(totalBuffer.ToArray(), 0, totalBytesRead);
+        }
+
+        /// <summary>
+        /// Polls the underlying winsock connection to detect if data can be read
+        /// </summary>
+        /// <returns>True to indicate that data is available or the connection has been closed</returns>
+        /// <remarks>
+        /// IMPORTANT: The Poll method only blocks when the connection is open and data has yet to be send
+        /// </remarks>
         private bool PollTcpClient()
         {
-            return _tcpClient.Client.Poll(1000, SelectMode.SelectRead);
+            return _tcpClient.Client.Poll(_sendReadTimeoutMicroseconds, SelectMode.SelectRead);
         }
 
         /// <summary>
@@ -169,6 +209,7 @@ namespace JSS.SimpleNetworkingClient
                 _tcpClient.Client.SendTimeout = _tcpClient.Client.ReceiveTimeout = (int)_sendReadTimeout.TotalMilliseconds;
 
             _timeoutTimer = DateTime.Now;
+            _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
         }
     }
 }

@@ -38,7 +38,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                     if (receiverClient.Pending())
                     {
                         var mock = new TcpReaderMock();
-                        var returnedData = await mock.ReadTcpData(await receiverClient. .AcceptTcpClientAsync());
+                        var returnedData = await mock.ReadTcpData(await receiverClient.AcceptTcpClientAsync());
                         returnedData.Should().Be(testData);
                         receiverClient.Stop();
                         return;
@@ -56,7 +56,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(LocalHost, Port))
+                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(5), 10))
                 {
                     await sendConnection.SendData(testData);
                 }

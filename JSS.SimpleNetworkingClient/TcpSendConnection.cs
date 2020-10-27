@@ -67,25 +67,30 @@ namespace JSS.SimpleNetworkingClient
             }
         }
 
-        public async Task SendData(string dataToSend)
+        /// <summary>
+        /// Send data to the remote party
+        /// </summary>
+        /// <param name="dataToSend">Data to send to the remote party</param>
+        /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
+        /// <returns></returns>
+        public async Task SendData(string dataToSend, int sendDelayMs = 0)
         {
             // TODO: Implement encoding selection instead of fixing it to UTF8
             var bytesToSend = Encoding.UTF8.GetBytes(dataToSend);
             var nrOfBytesSend = 0;
             int nrOfBytesToSend;
-            
+
             while (nrOfBytesSend < bytesToSend.Length)
             {
                 // Set initial send buffer size
-                if (bytesToSend.Length > _bufferSize)
-                    nrOfBytesToSend = _bufferSize;
-                else
-                    nrOfBytesToSend = bytesToSend.Length;
+                nrOfBytesToSend = bytesToSend.Length > _bufferSize ? _bufferSize : bytesToSend.Length;
+
+                // Delay sending of the data.
+                if (sendDelayMs > 0)
+                    await Task.Delay(sendDelayMs);
 
                 nrOfBytesSend += await _tcpClient.Client.SendAsync(new ArraySegment<byte>(bytesToSend, nrOfBytesSend, nrOfBytesToSend), SocketFlags.None);
-                //nrOfBytesSend += _tcpClient.Client.Send(bytesToSend.Skip(nrOfBytesSend).Take(nrOfBytesToSend).ToArray());
             }
-            
         }
 
         /// <summary>
@@ -93,11 +98,8 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         public void Dispose()
         {
-            _tcpClient.Client.Disconnect(false);
-            //_tcpClient?.Client?.Shutdown(SocketShutdown.Both);
             _tcpClient?.Close();
             _tcpClient?.Dispose();
-            _tcpClient = null;
         }
     }
 }
