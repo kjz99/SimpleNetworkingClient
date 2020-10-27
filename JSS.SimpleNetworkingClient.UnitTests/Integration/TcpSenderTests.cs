@@ -58,7 +58,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(5), 10))
                 {
-                    await sendConnection.SendData(testData);
+                    await sendConnection.SendData(testData, Encoding.UTF8);
                 }
             });
 

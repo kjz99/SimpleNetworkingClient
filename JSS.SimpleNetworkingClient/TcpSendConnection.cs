@@ -10,6 +10,7 @@ namespace JSS.SimpleNetworkingClient
     /// <summary>
     /// Defines a TCP send connection that can be used to send data to a remote party
     /// </summary>
+    /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
     public class TcpSendConnection : TcpConnectionBase, IDisposable
     {
         private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
@@ -70,26 +71,35 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Send data to the remote party
         /// </summary>
-        /// <param name="dataToSend">Data to send to the remote party</param>
+        /// <param name="dataToSend">Data in UTF-8 encoding to send to the remote party</param>
+        /// <param name="encoding">Encoding to use</param>
         /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
-        /// <returns></returns>
-        public async Task SendData(string dataToSend, int sendDelayMs = 0)
+        public async Task SendData(string dataToSend, Encoding encoding, int sendDelayMs = 0)
         {
-            // TODO: Implement encoding selection instead of fixing it to UTF8
-            var bytesToSend = Encoding.UTF8.GetBytes(dataToSend);
-            var nrOfBytesSend = 0;
-            int nrOfBytesToSend;
+            var bytesToSend = encoding.GetBytes(dataToSend);
+            await SendData(bytesToSend, sendDelayMs);
+        }
 
-            while (nrOfBytesSend < bytesToSend.Length)
+        /// <summary>
+        /// Send data to the remote party
+        /// </summary>
+        /// <param name="dataToSend">Byte data to send to the remote party</param>
+        /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
+        public async Task SendData(byte[] dataToSend, int sendDelayMs = 0)
+        {
+            var nrOfBytesSend = 0;
+
+            while (nrOfBytesSend < dataToSend.Length)
             {
                 // Set initial send buffer size
-                nrOfBytesToSend = bytesToSend.Length > _bufferSize ? _bufferSize : bytesToSend.Length;
+                var totalBytesStillToSend = dataToSend.Length - nrOfBytesSend;
+                var nrOfBytesToSend = totalBytesStillToSend > _bufferSize ? _bufferSize : totalBytesStillToSend;
 
                 // Delay sending of the data.
                 if (sendDelayMs > 0)
                     await Task.Delay(sendDelayMs);
 
-                nrOfBytesSend += await _tcpClient.Client.SendAsync(new ArraySegment<byte>(bytesToSend, nrOfBytesSend, nrOfBytesToSend), SocketFlags.None);
+                nrOfBytesSend += await _tcpClient.Client.SendAsync(new ArraySegment<byte>(dataToSend, nrOfBytesSend, nrOfBytesToSend), SocketFlags.None);
             }
         }
 
