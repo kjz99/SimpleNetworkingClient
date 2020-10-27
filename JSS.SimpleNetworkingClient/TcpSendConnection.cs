@@ -63,7 +63,7 @@ namespace JSS.SimpleNetworkingClient
             }
             catch (Exception ex)
             {
-                throw new NetworkingException($"Failed to connect to the remote party at '{_host}:{_port}'. Please check that the remote party is listening and the connection is not blocked by a virus scanner or firewall", NetworkingException.NetworkingExceptionTypeEnum.ConnectionSetupFailed);
+                throw new NetworkingException($"Failed to connect to the remote party at '{_host}:{_port}'. Please check that the remote party is listening and the connection is not blocked by a virus scanner or firewall", NetworkingException.NetworkingExceptionTypeEnum.ConnectionSetupFailed, ex);
             }
         }
 
@@ -73,7 +73,7 @@ namespace JSS.SimpleNetworkingClient
             var bytesToSend = Encoding.UTF8.GetBytes(dataToSend);
             var nrOfBytesSend = 0;
             int nrOfBytesToSend;
-
+            
             while (nrOfBytesSend < bytesToSend.Length)
             {
                 // Set initial send buffer size
@@ -93,7 +93,11 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         public void Dispose()
         {
+            _tcpClient.Client.Disconnect(false);
+            //_tcpClient?.Client?.Shutdown(SocketShutdown.Both);
+            _tcpClient?.Close();
             _tcpClient?.Dispose();
+            _tcpClient = null;
         }
     }
 }

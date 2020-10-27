@@ -5,6 +5,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient
@@ -17,6 +18,7 @@ namespace JSS.SimpleNetworkingClient
         protected int _bufferSize;
         protected TimeSpan _sendReadTimeout;
         protected TcpClient _tcpClient;
+        private DateTime _timeoutTimer;
 
         /// <summary>
         /// Ctor; Sets defaults for the connection base class
@@ -76,6 +78,14 @@ namespace JSS.SimpleNetworkingClient
                 // Read all the data in _bufferSize chunks until all the data has been read
                 while (bytesRemaining > 0)
                 {
+                    // Detect if the connection has been closed, reset or terminated
+                    if (_tcpClient.Connected == false)
+                        throw new NetworkingException($"Networking socket has been closed by the remote party", NetworkingException.NetworkingExceptionTypeEnum.ConnectionAbortedPrematurely);
+
+                    // Check if the read has timed out. The TcpClient has a mechanism for this but it is not relyable
+                    if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
+                        throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+
                     actualBytesRead = await stream.ReadAsync(chunckBuffer, 0, bytesToRead);
 
                     // Check if we have actually read any bytes. If we read faster that the transmitting party, we could overtake it.
@@ -118,15 +128,23 @@ namespace JSS.SimpleNetworkingClient
                 {
                     // Detect the tcp state and log this if the state changes
                     // TODO: Use Client.GetSocketState SocketOptionName.PacketInformation
+                    //var state = _tcpClient.Client.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.UpdateConnectContext);
+                    //byte[] tcpOptions = new byte[1024];
+                    //var sOpts = _tcpClient.Client.GetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.PacketInformation);
+                    _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.UpdateAcceptContext, null);
 
                     // Detect if there is an error on the socket
                     if (_tcpClient.Client.Poll(1, SelectMode.SelectError))
                         throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
 
                     // Detect if the connection has been closed, reset or terminated
-                    if (_tcpClient.Connected == false)
-                        throw new NetworkingException($"Networking socket has been closed by the remote party", NetworkingException.NetworkingExceptionTypeEnum.ConnectionAborted);
+                    if (_tcpClient.Connected == false && _tcpClient.Available == 0)
+                        break;
 
+                    // Check if the read has timed out. The TcpClient has a mechanism for this but it is not relyable
+                    if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
+                        throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+                    
                     // Read available data, but do not exceed the buffer size in one read
                     var bytesRead = stream.Read(chunckBuffer, 0, _bufferSize);
                     totalBytesRead += bytesRead;
@@ -149,6 +167,8 @@ namespace JSS.SimpleNetworkingClient
         {
             if (_tcpClient?.Client != null)
                 _tcpClient.Client.SendTimeout = _tcpClient.Client.ReceiveTimeout = (int)_sendReadTimeout.TotalMilliseconds;
+
+            _timeoutTimer = DateTime.Now;
         }
     }
 }

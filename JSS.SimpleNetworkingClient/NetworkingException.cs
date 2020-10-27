@@ -43,9 +43,13 @@ namespace JSS.SimpleNetworkingClient
             /// </summary>
             SocketError,
             /// <summary>
-            /// The remote party has closed and aborted the connection
+            /// The remote party has prematurely closed and aborted the connection
             /// </summary>
-            ConnectionAborted
+            ConnectionAbortedPrematurely,
+            /// <summary>
+            /// Reading from the socket has timed out
+            /// </summary>
+            ReadTimeout
         }
     }
 }
