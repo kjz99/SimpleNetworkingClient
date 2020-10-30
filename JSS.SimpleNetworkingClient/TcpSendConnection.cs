@@ -64,7 +64,7 @@ namespace JSS.SimpleNetworkingClient
                 // Let the connection remain open for x seconds after calling Close() if data still needs to be transmitted
                 _tcpClient.Client.LingerState.Enabled = true;
                 _tcpClient.Client.LingerState.LingerTime = 2; // 2 seconds
-                
+
                 // Connect and set the send/receive timeout
                 _tcpClient.ConnectAsync(_host, _port).Wait(_defaultTimeout);
                 SetTimeout();
@@ -94,13 +94,18 @@ namespace JSS.SimpleNetworkingClient
         /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
         public async Task SendData(byte[] dataToSend, int sendDelayMs = 0)
         {
+            var startTime = DateTime.Now;
             var nrOfBytesSend = 0;
 
             while (nrOfBytesSend < dataToSend.Length)
             {
-                // Set initial send buffer size
+                // Calculate initial send buffer size
                 var totalBytesStillToSend = dataToSend.Length - nrOfBytesSend;
                 var nrOfBytesToSend = totalBytesStillToSend > _bufferSize ? _bufferSize : totalBytesStillToSend;
+
+                // Check for a timeout
+                if (DateTime.Now > startTime + _sendReadTimeout)
+                    throw new NetworkingException($"Timeout in sending data. Timeout is {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
                 // Delay sending of the data.
                 if (sendDelayMs > 0)
