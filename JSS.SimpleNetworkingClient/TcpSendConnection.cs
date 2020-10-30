@@ -14,6 +14,7 @@ namespace JSS.SimpleNetworkingClient
     public class TcpSendConnection : TcpConnectionBase, IDisposable
     {
         private readonly TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
+        private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
         private readonly int _defaultBufferSize = 1024;
         private readonly string _host;
         private readonly int _port;
@@ -59,6 +60,12 @@ namespace JSS.SimpleNetworkingClient
             try
             {
                 _tcpClient = new TcpClient();
+
+                // Let the connection remain open for x seconds after calling Close() if data still needs to be transmitted
+                _tcpClient.Client.LingerState.Enabled = true;
+                _tcpClient.Client.LingerState.LingerTime = 2; // 2 seconds
+                
+                // Connect and set the send/receive timeout
                 _tcpClient.ConnectAsync(_host, _port).Wait(_defaultTimeout);
                 SetTimeout();
             }
@@ -99,8 +106,16 @@ namespace JSS.SimpleNetworkingClient
                 if (sendDelayMs > 0)
                     await Task.Delay(sendDelayMs);
 
+                // Wait until the socket becomes ready to write any data
+                if (_tcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
+                    throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
+
                 nrOfBytesSend += await _tcpClient.Client.SendAsync(new ArraySegment<byte>(dataToSend, nrOfBytesSend, nrOfBytesToSend), SocketFlags.None);
             }
+
+            // Wait until the socket becomes ready to write any data. In this phase we want to keep the connection open until all previous data has been transmitted, by checking if we can transmit additional data.
+            if (_tcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
+                throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data after all data has been transmitted. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
         }
 
         /// <summary>

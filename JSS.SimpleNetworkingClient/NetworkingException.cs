@@ -49,7 +49,11 @@ namespace JSS.SimpleNetworkingClient
             /// <summary>
             /// Reading from the socket has timed out
             /// </summary>
-            ReadTimeout
+            ReadTimeout,
+            /// <summary>
+            /// Timeout waiting for the socket to become ready for writing any data
+            /// </summary>
+            WriteTimeout
         }
     }
 }

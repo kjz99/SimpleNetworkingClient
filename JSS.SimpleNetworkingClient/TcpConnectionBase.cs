@@ -30,6 +30,7 @@ namespace JSS.SimpleNetworkingClient
         {
             // TODO: set linger state
             _sendReadTimeout = sendReadTimeout;
+            _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
             _bufferSize = bufferSize;
         }
 
@@ -209,7 +210,6 @@ namespace JSS.SimpleNetworkingClient
                 _tcpClient.Client.SendTimeout = _tcpClient.Client.ReceiveTimeout = (int)_sendReadTimeout.TotalMilliseconds;
 
             _timeoutTimer = DateTime.Now;
-            _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
         }
     }
 }
