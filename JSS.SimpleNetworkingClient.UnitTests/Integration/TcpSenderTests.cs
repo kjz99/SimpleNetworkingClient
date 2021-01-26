@@ -37,9 +37,13 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        var mock = new TcpReaderMock();
-                        var returnedData = await mock.ReadTcpData(await receiverClient.AcceptTcpClientAsync());
+                        var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        var returnedData = mock.ReadTcpData();
                         returnedData.Should().Be(testData);
+
+                        // Send a response back to the client and immediately close the connection.
+                        mock.SendData("ACK");
+
                         receiverClient.Stop();
                         return;
                     }
@@ -51,19 +55,21 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 throw new Exception("Experienced timeout on receiving data");
             });
 
+            // Wait for the reciever to start listening
             are.WaitOne(5000);
 
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(5), 10))
+                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(30), 10))
                 {
                     await sendConnection.SendData(testData, Encoding.UTF8);
+                    sendConnection.ReceiveData().Should().Be("ACK");
                 }
             });
 
-            if (Task.WaitAll(new[] { receiveTask, sendTask }, 500000) == false)
-                throw new TimeoutException();
+            if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
+                throw new TimeoutException("Send or receive task has not completed within the allotted time");
 
             // Make sure that exceptions on other thread tasks fail the unit test
             if (receiveTask.Exception != null)

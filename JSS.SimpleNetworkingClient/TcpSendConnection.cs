@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient
 {
     /// <summary>
-    /// Defines a TCP send connection that can be used to send data to a remote party
+    /// Defines a TCP send connection that can be used to send data to a remote party.
+    /// Warning, please make sure that you always dipose of this class so that unmanaged resources will be released.
     /// </summary>
     /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
     public class TcpSendConnection : TcpConnectionBase, IDisposable
@@ -18,7 +20,6 @@ namespace JSS.SimpleNetworkingClient
         private readonly int _defaultBufferSize = 1024;
         private readonly string _host;
         private readonly int _port;
-        private TcpClient _tcpClient;
 
         // TODO: implement universal logging
 
@@ -47,6 +48,7 @@ namespace JSS.SimpleNetworkingClient
         {
             _host = host;
             _port = port;
+
             StartConnection();
         }
 
@@ -60,13 +62,15 @@ namespace JSS.SimpleNetworkingClient
             try
             {
                 _tcpClient = new TcpClient();
-
+                
                 // Let the connection remain open for x seconds after calling Close() if data still needs to be transmitted
                 _tcpClient.Client.LingerState.Enabled = true;
                 _tcpClient.Client.LingerState.LingerTime = 2; // 2 seconds
 
                 // Connect and set the send/receive timeout
-                _tcpClient.ConnectAsync(_host, _port).Wait(_defaultTimeout);
+                if (_tcpClient.ConnectAsync(_host, _port).Wait(_defaultTimeout) == false)
+                    throw new TimeoutException();
+
                 SetTimeout();
             }
             catch (Exception ex)
@@ -92,6 +96,10 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         /// <param name="dataToSend">Byte data to send to the remote party</param>
         /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
+        /// <remarks>
+        /// nr of bytes send is the nr of bytes send to the operating system networking stack. The networking stack by design does not guarantee that the data is actually completely transmitted across the network.
+        /// We could also pass all the data at once to the BeginSend, but i want to remain in control over each block of data send, so we can see what is going wrong when a transmission failure occurs.
+        /// </remarks>
         public async Task SendData(byte[] dataToSend, int sendDelayMs = 0)
         {
             var startTime = DateTime.Now;
@@ -115,12 +123,24 @@ namespace JSS.SimpleNetworkingClient
                 if (_tcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
                     throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
-                nrOfBytesSend += await _tcpClient.Client.SendAsync(new ArraySegment<byte>(dataToSend, nrOfBytesSend, nrOfBytesToSend), SocketFlags.None);
+                // Select the chunck of data to be send without copying the array and send the data
+                var segmentToSend = new ArraySegment<byte>(dataToSend, nrOfBytesSend, nrOfBytesToSend);
+                var sendOperation = _tcpClient.Client.BeginSend(segmentToSend.Array, 0, segmentToSend.Count, SocketFlags.None, _ => { }, _tcpClient.Client);
+                nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
             }
+        }
 
-            // Wait until the socket becomes ready to write any data. In this phase we want to keep the connection open until all previous data has been transmitted, by checking if we can transmit additional data.
-            if (_tcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
-                throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data after all data has been transmitted. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
+        /// <summary>
+        /// Attempt to receive data on the send connection.
+        /// This method blocks until the remote party disconnected or the receive timeout expired.
+        /// </summary>
+        /// <param name="endOfStreamCharacter">End of stream character, Eg 0x03 for ASCII char ETX. Set to null to disable end of stream checking.</param>
+        /// <returns>
+        /// Data received from the remote party
+        /// </returns>
+        public string ReceiveData()
+        {
+            return ReadTcpData();
         }
 
         /// <summary>

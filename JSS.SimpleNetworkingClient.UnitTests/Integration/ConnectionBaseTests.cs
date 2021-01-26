@@ -41,8 +41,8 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        var mock = new TcpReaderMock();
-                        var returnedData = await mock.ReadTcpDataWithLength(await receiverClient.AcceptTcpClientAsync());
+                        var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        var returnedData = await mock.ReadTcpDataWithLength();
                         returnedData.Should().Be(testData);
                         receiverClient.Stop();
                         return;

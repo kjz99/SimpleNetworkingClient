@@ -4,28 +4,29 @@ using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 {
+    /// <summary>
+    /// Tcp reader mock that accepts already existing sockets
+    /// </summary>
     public class TcpReaderMock : TcpConnectionBase
     {
-        public TcpReaderMock() : base(TimeSpan.FromSeconds(5), 16)
-        {
-
-        }
-
-        public async Task<string> ReadTcpData(TcpClient client)
+        public TcpReaderMock(TcpClient client) : base(TimeSpan.FromSeconds(50), 16)
         {
             _tcpClient = client;
-            return await base.ReadTcpData();
         }
 
-        public async Task<string> ReadTcpData(Socket socket)
+        public string ReadTcpData()
         {
-            return await base.ReadTcpData(socket);
+            return base.ReadTcpData();
         }
 
-        public async Task<string> ReadTcpDataWithLength(TcpClient client)
+        public async Task<string> ReadTcpDataWithLength()
         {
-            _tcpClient = client;
             return await base.ReadTcpDataWithLengthHeader();
+        }
+
+        public void SendData(string data)
+        {
+
         }
     }
 }
