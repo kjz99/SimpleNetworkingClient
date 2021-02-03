@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -16,7 +17,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public string ReadTcpData()
         {
-            return base.ReadTcpData();
+            return base.ReadTcpData(new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
         }
 
         public async Task<string> ReadTcpDataWithLength()

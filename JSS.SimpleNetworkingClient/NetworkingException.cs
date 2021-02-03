@@ -51,6 +51,10 @@ namespace JSS.SimpleNetworkingClient
             /// </summary>
             ReadTimeout,
             /// <summary>
+            /// Cannot open a listening socket on the given port or the listener has failed due to an unhandled exception
+            /// </summary>
+            ListeningError,
+            /// <summary>
             /// Timeout waiting for the socket to become ready for writing any data
             /// </summary>
             WriteTimeout

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
@@ -13,28 +14,30 @@ namespace JSS.SimpleNetworkingClient
     public abstract class TcpConnectionBase : IDisposable
     {
         protected int _bufferSize;
+        private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
         protected TimeSpan _sendReadTimeout;
         protected int _sendReadTimeoutMicroseconds;
         protected TcpClient _tcpClient;
         private DateTime _timeoutTimer;
+        protected IList<byte> _stxCharacters;
+        protected IList<byte> _etxCharacters;
 
         /// <summary>
         /// Ctor; Sets defaults for the connection base class
         /// </summary>
         /// <param name="sendReadTimeout">Send/Read timeout</param>
+        /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         protected TcpConnectionBase(TimeSpan sendReadTimeout, int bufferSize)
         {
             _sendReadTimeout = sendReadTimeout;
-            SetTimeout();
             _bufferSize = bufferSize;
-        }
+            _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
 
-        /// <summary>
-        /// Overloaded Ctor; allows implementing class to set the timeout and buffer sizes
-        /// </summary>
-        protected TcpConnectionBase()
-        {
-
+            if (_sendReadTimeout == null || _sendReadTimeout <= TimeSpan.Zero)
+                throw new ArgumentException($"{nameof(_sendReadTimeout)} must be set to a value higher than zero seconds");
+            
+            if (_bufferSize <= 0)
+                throw new ArgumentException($"{nameof(_bufferSize)} must be larger than zero");
         }
 
         /// <summary>
@@ -46,7 +49,7 @@ namespace JSS.SimpleNetworkingClient
         protected async Task<string> ReadTcpDataWithLengthHeader()
         {
             NetworkStream stream = _tcpClient.GetStream();
-            SetTimeout();
+            _timeoutTimer = DateTime.Now;
             var bytesToRead = 0;
             var bytesRemaining = 0;
             var actualBytesRead = 0;
@@ -113,12 +116,13 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Reads TCP data until the remote part closes the connection or the end of stream character is received
         /// </summary>
-        /// <param name="endOfStreamCharacter">End of stream character, Eg 0x03 for ASCII char ETX. Set to null to disable end of stream checking.</param>
+        /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
+        /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
         /// <returns></returns>
-        protected string ReadTcpData(byte? endOfStreamCharacter)
+        protected string ReadTcpData(IList<byte> stxCharacters, IList<byte> etxCharacters)
         {
             NetworkStream stream = _tcpClient.GetStream();
-            SetTimeout();
+            _timeoutTimer = DateTime.Now;
             var totalBytesRead = 0;
             var chunckBuffer = new byte[_bufferSize];
             List<byte> totalBuffer = new List<byte>();
@@ -144,23 +148,32 @@ namespace JSS.SimpleNetworkingClient
                 var actualBytesRead = chunckBuffer.Take(bytesRead).ToList();
                 totalBuffer.AddRange(actualBytesRead);
 
-                // Check for the end of stream character if supplied
-                if (endOfStreamCharacter.HasValue && actualBytesRead.Last() == endOfStreamCharacter.Value)
+                // Check if the end of the actual bytes read matches the supplied end of stream character(s)
+                if (etxCharacters != null 
+                    && actualBytesRead.Count >= etxCharacters.Count
+                    && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
                     break;
             }
 
-            return Encoding.UTF8.GetString(totalBuffer.ToArray(), 0, totalBytesRead);
+            // Check if the start of transmission matches
+            if (stxCharacters != null && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
+                throw new InvalidOperationException($"Parameter {nameof(stxCharacters)} has been set with '{string.Join(", ", stxCharacters)}' but these bytes have not been found at the start of transmission");
+
+            // Return string excluding stx/etx characters
+            var startIndex = stxCharacters?.Count ?? 0;
+            var endCount = totalBytesRead - startIndex - etxCharacters?.Count ?? 0;
+            return Encoding.UTF8.GetString(totalBuffer.ToArray(), startIndex, endCount);
         }
 
-        protected string ReadTcpData(Socket socket)
+        protected string ReadTcpDataSocket(Socket socket)
         {
-            SetTimeout();
+            _timeoutTimer = DateTime.Now;
             var totalBytesRead = 0;
             var chunckBuffer = new byte[_bufferSize];
             List<byte> totalBuffer = new List<byte>();
 
             // Read all the data until the tcp connection has been closed
-            while (PollTcpClient())
+            while (socket.Poll(_sendReadTimeoutMicroseconds, SelectMode.SelectRead))
             {
                 // Detect if there is an error on the socket
                 if (socket.Poll(1, SelectMode.SelectError))
@@ -184,6 +197,57 @@ namespace JSS.SimpleNetworkingClient
         }
 
         /// <summary>
+        /// Send data to the remote party.
+        /// If the stx/etx characters have been set with the constructor, they will be added to the dataToSend
+        /// </summary>
+        /// <param name="dataToSend">Data in UTF-8 encoding to send to the remote party</param>
+        /// <param name="encoding">Encoding to use</param>
+        /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
+        public async Task SendData(string dataToSend, Encoding encoding, int sendDelayMs = 0)
+        {
+            var bytesToSend = GetByteListNotNull(_stxCharacters).Concat(encoding.GetBytes(dataToSend)).Concat(GetByteListNotNull(_etxCharacters)).ToArray();
+            await SendData(bytesToSend, sendDelayMs);
+        }
+
+        /// <summary>
+        /// Send data to the remote party
+        /// </summary>
+        /// <param name="dataToSend">Byte data to send to the remote party</param>
+        /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
+        /// <remarks>
+        /// nr of bytes send is the nr of bytes send to the operating system networking stack. The networking stack by design does not guarantee that the data is actually completely transmitted across the network.
+        /// We could also pass all the data at once to the BeginSend, but i want to remain in control over each block of data send, so we can see what is going wrong when a transmission failure occurs.
+        /// </remarks>
+        public async Task SendData(byte[] dataToSend, int sendDelayMs = 0)
+        {
+            var startTime = DateTime.Now;
+            var nrOfBytesSend = 0;
+
+            while (nrOfBytesSend < dataToSend.Length)
+            {
+                // Calculate initial send buffer size
+                var totalBytesStillToSend = dataToSend.Length - nrOfBytesSend;
+                var nrOfBytesToSend = totalBytesStillToSend > _bufferSize ? _bufferSize : totalBytesStillToSend;
+
+                // Check for a timeout
+                if (DateTime.Now > startTime + _sendReadTimeout)
+                    throw new NetworkingException($"Timeout in sending data. Timeout is {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
+
+                // Delay sending of the data.
+                if (sendDelayMs > 0)
+                    await Task.Delay(sendDelayMs);
+
+                // Wait until the socket becomes ready to write any data
+                if (_tcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
+                    throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
+
+                // Select the chunck of data to be send without copying the array and send the data
+                var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, _tcpClient.Client);
+                nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
+            }
+        }
+
+        /// <summary>
         /// Polls the underlying winsock connection to detect if data can be read
         /// </summary>
         /// <returns>True to indicate that data is available or the connection has been closed</returns>
@@ -197,15 +261,13 @@ namespace JSS.SimpleNetworkingClient
         }
 
         /// <summary>
-        /// Sets the tcp/udp client timeout
+        /// Gets a byte list. If the input is null, a new empty list will be returned
         /// </summary>
-        protected void SetTimeout()
+        /// <param name="input">Byte list or null</param>
+        /// <returns>byte list</returns>
+        private List<byte> GetByteListNotNull(IList<byte> input)
         {
-            if (_tcpClient?.Client != null)
-                _tcpClient.Client.SendTimeout = _tcpClient.Client.ReceiveTimeout = (int)_sendReadTimeout.TotalMilliseconds;
-
-            _timeoutTimer = DateTime.Now;
-            _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
+            return input as List<byte> ?? new List<byte>();
         }
 
         public void Dispose()
