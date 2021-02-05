@@ -270,9 +270,21 @@ namespace JSS.SimpleNetworkingClient
             return input as List<byte> ?? new List<byte>();
         }
 
+        /// <summary>
+        /// Disposes the currently active tcp client(if any)
+        /// </summary>
+        protected void DisposeCurrentTcpClient()
+        {
+            _tcpClient.Client.Close();
+            _tcpClient.Client.Dispose();
+            _tcpClient.Client = null;
+            _tcpClient.Close();
+            _tcpClient.Dispose();
+        }
+
         public void Dispose()
         {
-            _tcpClient.Dispose();
+            DisposeCurrentTcpClient();
         }
     }
 }
