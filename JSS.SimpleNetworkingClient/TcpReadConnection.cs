@@ -41,17 +41,16 @@ namespace JSS.SimpleNetworkingClient
                 throw new ArgumentException("Set OnDataReceived before calling StartListening()");
 
             _cancellationTokenSource = new CancellationTokenSource();
-            _listenerTask = Task.Run(ConnectionListenerImpl, _cancellationTokenSource.Token);
+            _listenerTask = Task.Run(async () => await ConnectionListenerImpl(), _cancellationTokenSource.Token);
         }
 
-        private void ConnectionListenerImpl()
+        private async Task ConnectionListenerImpl()
         {
             while (true)
             {
-                // Start listening for the remote party
                 try
                 {
-                    // Open the listening socket
+                    // Open the listening socket and start listening for the remote party
                     _tcpListener = new TcpListener(IPAddress.Any, _port);
                     _tcpListener.Start();
 
@@ -61,7 +60,6 @@ namespace JSS.SimpleNetworkingClient
                         var asyncAcceptResult = _tcpListener.BeginAcceptTcpClient(ar => { }, _tcpListener);
                         Task.Factory.FromAsync(asyncAcceptResult, result =>
                         {
-                            DisposeCurrentTcpClient();
                             _tcpClient = _tcpListener.EndAcceptTcpClient(result);
                             OnDataReceived(ReadTcpData(_stxCharacters, _etxCharacters));
                         }).Wait(_cancellationTokenSource.Token);
@@ -69,13 +67,14 @@ namespace JSS.SimpleNetworkingClient
                         _cancellationTokenSource.Token.ThrowIfCancellationRequested();
                     }
                 }
-                catch (TaskCanceledException tcEx)
+                catch (TaskCanceledException)
                 {
                     return;
                 }
                 catch (Exception ex)
                 {
-                    throw new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex);
+                    _logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
+                    await Task.Delay(TimeSpan.FromSeconds(10));
                 }
             }
         }
@@ -85,6 +84,11 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         public Action<string> OnDataReceived { get; set; }
 
-
+        public void Dispose()
+        {
+            _cancellationTokenSource.Cancel();
+            _listenerTask.Wait(_sendReadTimeout);
+            Dispose();
+        }
     }
 }

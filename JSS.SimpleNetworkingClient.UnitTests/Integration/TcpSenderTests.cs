@@ -96,9 +96,11 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
-                        var returnedData = mock.ReadTcpData();
-                        returnedData.Should().Be(testData);
+                        using (var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync()))
+                        {
+                            var returnedData = mock.ReadTcpData();
+                            returnedData.Should().Be(testData);
+                        }
                     }
                     else
                     {
@@ -123,7 +125,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         await sendConnection.SendData(testData, Encoding.UTF8);
                     }
 
-                    await Task.Delay(50);
+                    await Task.Delay(10);
                 }
 
                 cancelTokenSrc.Cancel();

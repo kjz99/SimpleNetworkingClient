@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using JSS.SimpleNetworkingClient.Interfaces;
+using JSS.SimpleNetworkingClient.Utils;
 
 namespace JSS.SimpleNetworkingClient
 {
@@ -13,6 +15,7 @@ namespace JSS.SimpleNetworkingClient
     /// </summary>
     public abstract class TcpConnectionBase : IDisposable
     {
+        protected ISimpleNetworkingClientLogger _logger;
         protected int _bufferSize;
         private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
         protected TimeSpan _sendReadTimeout;
@@ -97,6 +100,7 @@ namespace JSS.SimpleNetworkingClient
                 }
 
                 totalBytesRead += actualBytesRead;
+                _logger?.Debug($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
                 totalBuffer.AddRange(chunckBuffer.Take(actualBytesRead));
                 bytesRemaining -= actualBytesRead;
 
@@ -145,20 +149,24 @@ namespace JSS.SimpleNetworkingClient
                 // Read available data, but do not exceed the buffer size in one read
                 var bytesRead = stream.Read(chunckBuffer, 0, _bufferSize);
                 totalBytesRead += bytesRead;
+                _logger?.Debug($"{totalBytesRead} bytes have been read in total. Last chunk contains {bytesRead} bytes");
                 var actualBytesRead = chunckBuffer.Take(bytesRead).ToList();
                 totalBuffer.AddRange(actualBytesRead);
 
                 // Check if the end of the actual bytes read matches the supplied end of stream character(s)
-                if (etxCharacters != null 
+                if (etxCharacters != null
                     && actualBytesRead.Count >= etxCharacters.Count
                     && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
+                {
+                    _logger?.Debug($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
                     break;
+                }
             }
 
             // Check if the start of transmission matches
             if (stxCharacters != null && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
-                throw new InvalidOperationException($"Parameter {nameof(stxCharacters)} has been set with '{string.Join(", ", stxCharacters)}' but these bytes have not been found at the start of transmission");
-
+                throw new InvalidOperationException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission");
+            
             // Return string excluding stx/etx characters
             var startIndex = stxCharacters?.Count ?? 0;
             var endCount = totalBytesRead - startIndex - etxCharacters?.Count ?? 0;
@@ -242,10 +250,16 @@ namespace JSS.SimpleNetworkingClient
                     throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
                 // Select the chunck of data to be send without copying the array and send the data
-                var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, _tcpClient.Client);
+                var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => {}, _tcpClient.Client);
                 nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
+                _logger?.Debug($"{nrOfBytesSend} hav been send in total");
             }
         }
+
+        /// <summary>
+        /// Gets the active send/read timeout
+        /// </summary>
+        public TimeSpan SendReadTimeout => _sendReadTimeout;
 
         /// <summary>
         /// Polls the underlying winsock connection to detect if data can be read
@@ -275,11 +289,14 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         protected void DisposeCurrentTcpClient()
         {
-            _tcpClient.Client.Close();
-            _tcpClient.Client.Dispose();
-            _tcpClient.Client = null;
-            _tcpClient.Close();
-            _tcpClient.Dispose();
+            if (_tcpClient != null)
+            {
+                _tcpClient.Client?.Close();
+                _tcpClient.Client?.Dispose();
+                _tcpClient.Client = null;
+                _tcpClient.Close();
+                _tcpClient.Dispose();
+            }
         }
 
         public void Dispose()
