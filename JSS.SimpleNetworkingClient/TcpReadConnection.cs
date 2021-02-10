@@ -7,15 +7,13 @@ using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient
 {
-    public class TcpReadConnection : TcpConnectionBase
+    public class TcpReadConnection : TcpConnectionBase, IDisposable
     {
         private readonly int _defaultBufferSize = 1024;
         private readonly int _port;
         private Task _listenerTask;
         private CancellationTokenSource _cancellationTokenSource;
         private TcpListener _tcpListener;
-
-        // TODO: implement universal logging
 
         /// <summary>
         /// Ctor; Starts a new tcp listener 
@@ -37,9 +35,6 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         public void StartListening()
         {
-            if (OnDataReceived == null)
-                throw new ArgumentException("Set OnDataReceived before calling StartListening()");
-
             _cancellationTokenSource = new CancellationTokenSource();
             _listenerTask = Task.Run(async () => await ConnectionListenerImpl(), _cancellationTokenSource.Token);
         }
@@ -51,8 +46,10 @@ namespace JSS.SimpleNetworkingClient
                 try
                 {
                     // Open the listening socket and start listening for the remote party
+                    _logger?.Debug($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
                     _tcpListener = new TcpListener(IPAddress.Any, _port);
                     _tcpListener.Start();
+                    _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been started successfully");
 
                     while (true)
                     {
@@ -61,14 +58,17 @@ namespace JSS.SimpleNetworkingClient
                         Task.Factory.FromAsync(asyncAcceptResult, result =>
                         {
                             _tcpClient = _tcpListener.EndAcceptTcpClient(result);
-                            OnDataReceived(ReadTcpData(_stxCharacters, _etxCharacters));
+                            OnDataReceived.Invoke(ReadTcpData(_stxCharacters, _etxCharacters));
+                            if (OnDataReceived == null)
+                                _logger?.Error($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received");
                         }).Wait(_cancellationTokenSource.Token);
 
                         _cancellationTokenSource.Token.ThrowIfCancellationRequested();
                     }
                 }
-                catch (TaskCanceledException)
+                catch (OperationCanceledException)
                 {
+                    _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
                     return;
                 }
                 catch (Exception ex)
@@ -84,11 +84,12 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         public Action<string> OnDataReceived { get; set; }
 
-        public void Dispose()
+        public new void Dispose()
         {
+            _tcpListener?.Stop();
             _cancellationTokenSource.Cancel();
             _listenerTask.Wait(_sendReadTimeout);
-            Dispose();
+            base.Dispose();
         }
     }
 }

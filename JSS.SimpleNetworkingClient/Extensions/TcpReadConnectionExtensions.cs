@@ -28,8 +28,8 @@ namespace JSS.SimpleNetworkingClient.Extensions
                     dataReceivedAutoResetEvent.Set();
                 };
 
-                if (dataReceivedAutoResetEvent.WaitOne(readConnection.SendReadTimeout))
-                    throw new NetworkingException("", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+                if (!dataReceivedAutoResetEvent.WaitOne(timeout))
+                    throw new NetworkingException("Failed waiting for data within the given timeout", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
                 return result;
             });

@@ -125,7 +125,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         await sendConnection.SendData(testData, Encoding.UTF8);
                     }
 
-                    await Task.Delay(10);
+                    await Task.Delay(100);
                 }
 
                 cancelTokenSrc.Cancel();
