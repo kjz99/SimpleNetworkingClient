@@ -7,8 +7,13 @@ This client is not designed for multithreaded scenario's, where multiple clients
 For that scenario, more in depth design and programming is required anyway. Defeating the purpose of the SimpleNetworkingClient.
 
 # Todo
-The JSS SimpleNetworkingClient is currently not fully implemented and only supports sending data.
-It partially supports reading data as implemented in the unit tests.
+The JSS SimpleNetworkingClient is currently not fully implemented and partially supports sending and reading data.
+
+# Useage
+TODO
+
+# Unit/Integration Tests
+TODO
 
 # License
 This application public domain and is available as described by the Creative Commons CC0 1.0 Universal public license.<br/>

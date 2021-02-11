@@ -10,7 +10,8 @@ namespace JSS.SimpleNetworkingClient
 {
     /// <summary>
     /// Defines a TCP send connection that can be used to send data to a remote party.
-    /// Warning, please make sure that you always dispose of this class so that unmanaged resources will be released.
+    /// Warning; please make sure that you always dispose of this class so that unmanaged resources will be released.
+    /// This implementation is not guaranteed to be thread safe. If you do any other IO related operations on the same thread, TcpClient unmanaged memory leaks may occur.
     /// </summary>
     /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
     public class TcpSendConnection : TcpConnectionBase

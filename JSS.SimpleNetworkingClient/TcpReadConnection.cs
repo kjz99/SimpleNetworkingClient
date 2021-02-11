@@ -7,6 +7,12 @@ using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient
 {
+    /// <summary>
+    /// Manages a new tcp listening connection on the given port.
+    /// Warning; please make sure that you always dispose of this class so that unmanaged resources will be released.
+    /// This implementation is guaranteed to be thread safe because the tcp listener and tcp IO operations run on a separate thread.
+    /// </summary>
+    /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
     public class TcpReadConnection : TcpConnectionBase, IDisposable
     {
         private readonly int _defaultBufferSize = 1024;

@@ -309,7 +309,7 @@ namespace JSS.SimpleNetworkingClient
                 _tcpClient.Dispose();
             }
 
-            _logger.Debug($"{nameof(DisposeCurrentTcpClient)}() has been executed");
+            _logger?.Debug($"{nameof(DisposeCurrentTcpClient)}() has been executed");
         }
 
         public void Dispose()
