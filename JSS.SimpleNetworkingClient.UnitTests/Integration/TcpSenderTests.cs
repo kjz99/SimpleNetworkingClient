@@ -61,7 +61,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                 {
                     await sendConnection.SendData(testData, Encoding.UTF8);
                     sendConnection.ReceiveData().Should().Be("ACK");
@@ -120,7 +120,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 for (int i = 0; i < 1000; i++)
                 {
-                    using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                    using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                     {
                         await sendConnection.SendData(testData, Encoding.UTF8);
                     }

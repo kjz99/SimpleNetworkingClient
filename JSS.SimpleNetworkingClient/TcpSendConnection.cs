@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using JSS.SimpleNetworkingClient.Interfaces;
 
 namespace JSS.SimpleNetworkingClient
 {
@@ -26,13 +27,14 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Ctor; Establishes a new connection to the remote party for sending and or receiving data
         /// </summary>
+        /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
         /// <param name="host">Hostname or ip address to connect to</param>
         /// <param name="port">Port to use</param>
         /// <param name="sendReadTimeout">Send/Read timeout</param>
         /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
         /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpSendConnection(string host, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(sendReadTimeout, bufferSize)
+        public TcpSendConnection(ISimpleNetworkingClientLogger logger, string host, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(sendReadTimeout, bufferSize)
         {
             _host = host;
             _port = port;

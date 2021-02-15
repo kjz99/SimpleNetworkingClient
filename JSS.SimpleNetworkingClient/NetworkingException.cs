@@ -35,6 +35,10 @@ namespace JSS.SimpleNetworkingClient
             /// </summary>
             MoreOrLessDataReceived,
             /// <summary>
+            /// The wrong STX or ETX characters have been received
+            /// </summary>
+            WrongStxEtxCharactersReceived,
+            /// <summary>
             /// Failed to establish a new connection to the remote party
             /// </summary>
             ConnectionSetupFailed,

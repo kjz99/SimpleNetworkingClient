@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using JSS.SimpleNetworkingClient.Interfaces;
 
 namespace JSS.SimpleNetworkingClient
 {
@@ -16,6 +17,7 @@ namespace JSS.SimpleNetworkingClient
     public class TcpReadConnection : TcpConnectionBase, IDisposable
     {
         private readonly int _defaultBufferSize = 1024;
+        private readonly ISimpleNetworkingClientLogger _logger;
         private readonly int _port;
         private Task _listenerTask;
         private CancellationTokenSource _cancellationTokenSource;
@@ -24,16 +26,19 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Ctor; Starts a new tcp listener 
         /// </summary>
+        /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
         /// <param name="port">Port on which to listen for incoming connections</param>
         /// <param name="sendReadTimeout">Send/Read timeout</param>
         /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
         /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpReadConnection(int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(sendReadTimeout, bufferSize)
+        public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(sendReadTimeout, bufferSize)
         {
+            _logger = logger;
             _port = port;
             _stxCharacters = stxCharacters;
             _etxCharacters = etxCharacters;
+
         }
 
         /// <summary>
@@ -51,11 +56,8 @@ namespace JSS.SimpleNetworkingClient
             {
                 try
                 {
-                    // Open the listening socket and start listening for the remote party
-                    _logger?.Debug($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
-                    _tcpListener = new TcpListener(IPAddress.Any, _port);
-                    _tcpListener.Start();
-                    _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been started successfully");
+                    if (_tcpListener == null)
+                        StartTcpListener();
 
                     while (true)
                     {
@@ -64,7 +66,7 @@ namespace JSS.SimpleNetworkingClient
                         Task.Factory.FromAsync(asyncAcceptResult, result =>
                         {
                             _tcpClient = _tcpListener.EndAcceptTcpClient(result);
-                            OnDataReceived.Invoke(ReadTcpData(_stxCharacters, _etxCharacters));
+                            OnDataReceived?.Invoke(ReadTcpData(_stxCharacters, _etxCharacters));
                             if (OnDataReceived == null)
                                 _logger?.Error($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received");
                         }).Wait(_cancellationTokenSource.Token);
@@ -79,16 +81,54 @@ namespace JSS.SimpleNetworkingClient
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
-                    await Task.Delay(TimeSpan.FromSeconds(10));
+                    if (ex.InnerException != null && ex.InnerException.GetType() == typeof(NetworkingException))
+                    {
+                        _logger?.Error("Networking Exception has been received", ex.InnerException);
+                    }
+                    else
+                    {
+                        _logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
+                        StopTcpListener();
+                        await Task.Delay(TimeSpan.FromSeconds(10));
+                    }
                 }
             }
-        }
+        }       
 
         /// <summary>
         /// Action that is executed when new data has been received
         /// </summary>
         public Action<string> OnDataReceived { get; set; }
+
+/// <summary>
+        /// Open the listening socket and start listening for the remote party
+        /// </summary>
+        private void StartTcpListener()
+        {
+            _logger?.Debug($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
+            _tcpListener?.Stop();
+            _tcpListener = new TcpListener(IPAddress.Any, _port);
+            _tcpListener.Start();
+            _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been started successfully");
+        }
+
+        /// <summary>
+        /// Stops the listening socket and stop listening for the remote party
+        /// </summary>
+        private void StopTcpListener()
+        {
+            try
+            {
+                _logger?.Debug($"Attempting to stop {nameof(TcpListener)}");
+                _tcpListener?.Stop();
+                _tcpListener = null;
+                _logger?.Debug($"{nameof(TcpListener)} has stopped listening for new connections");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Failed to stop {nameof(TcpListener)}", ex);
+            }
+        }
 
         public new void Dispose()
         {

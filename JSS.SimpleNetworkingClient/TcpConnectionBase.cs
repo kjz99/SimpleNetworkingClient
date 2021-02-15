@@ -172,7 +172,7 @@ namespace JSS.SimpleNetworkingClient
 
             // Check if the start of transmission matches
             if (stxCharacters != null && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
-                throw new InvalidOperationException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission");
+                throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
             else
                 _logger?.Debug($"Total nr of {totalBytesRead} bytes have been read");
 

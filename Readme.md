@@ -9,8 +9,16 @@ For that scenario, more in depth design and programming is required anyway. Defe
 # Todo
 The JSS SimpleNetworkingClient is currently not fully implemented and partially supports sending and reading data.
 
-# Useage
+# Usage
 TODO
+## Using the log4net logger
+To use the log4net logger you can instanciate the logger using  one of the constructors.
+As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
+### log4net instance including full repository
+var defaultLoggingRepo = LogManager.CreateRepository("defaultrepository");
+XmlConfigurator.Configure(defaultLoggingRepo, File.ReadAllText("C:\path\to\log4netconfig.xml"));
+var loggerToUse = new Log4netLogger("defaultrepository", "networkingclient");
+using var reader = new TcpReadConnection(loggerToUse, 8081, TimeSpan.FromSeconds(10), 1024, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
 
 # Unit/Integration Tests
 TODO

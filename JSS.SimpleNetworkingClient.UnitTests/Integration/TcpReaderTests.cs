@@ -28,7 +28,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             var receiveTask = Task.Run(async () =>
             {
                 var dataReceived = new AutoResetEvent(false);
-                using (var reader = new TcpReadConnection(Port, _defaultTimeout, 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                using (var reader = new TcpReadConnection(null, Port, _defaultTimeout, 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                 {
                     reader.OnDataReceived = (returnedData) =>
                     {
@@ -49,7 +49,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                 {
                     await sendConnection.SendData(testData, Encoding.UTF8);
                     sendConnection.ReceiveData().Should().Be("ACK");
@@ -78,7 +78,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start the receiving side
             var receiveTask = Task.Run(async () =>
             {
-                using (var reader = new TcpReadConnection(Port, _defaultTimeout, 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                using (var reader = new TcpReadConnection(null, Port, _defaultTimeout, 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                 {
                     reader.StartListening();
                     are.Set();
@@ -94,7 +94,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
                 {
                     await sendConnection.SendData(testData, Encoding.UTF8);
                     sendConnection.ReceiveData().Should().Be("ACK");
