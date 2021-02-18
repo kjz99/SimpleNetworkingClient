@@ -10,7 +10,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
     /// </summary>
     public class TcpReaderMock : TcpConnectionBase
     {
-        public TcpReaderMock(TcpClient client) : base(TimeSpan.FromSeconds(5), 16)
+        public TcpReaderMock(TcpClient client) : base(null, TimeSpan.FromSeconds(5), 16)
         {
             _tcpClient = client;
         }

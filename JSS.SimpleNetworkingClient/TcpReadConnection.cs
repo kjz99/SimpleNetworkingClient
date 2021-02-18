@@ -17,7 +17,6 @@ namespace JSS.SimpleNetworkingClient
     public class TcpReadConnection : TcpConnectionBase, IDisposable
     {
         private readonly int _defaultBufferSize = 1024;
-        private readonly ISimpleNetworkingClientLogger _logger;
         private readonly int _port;
         private Task _listenerTask;
         private CancellationTokenSource _cancellationTokenSource;
@@ -32,13 +31,11 @@ namespace JSS.SimpleNetworkingClient
         /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
         /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(sendReadTimeout, bufferSize)
+        public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(logger, sendReadTimeout, bufferSize)
         {
-            _logger = logger;
             _port = port;
             _stxCharacters = stxCharacters;
             _etxCharacters = etxCharacters;
-
         }
 
         /// <summary>
@@ -66,9 +63,26 @@ namespace JSS.SimpleNetworkingClient
                         Task.Factory.FromAsync(asyncAcceptResult, result =>
                         {
                             _tcpClient = _tcpListener.EndAcceptTcpClient(result);
-                            OnDataReceived?.Invoke(ReadTcpData(_stxCharacters, _etxCharacters));
-                            if (OnDataReceived == null)
-                                _logger?.Error($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received");
+                            while (true)
+                            {
+                                // Poll returns true if data is available or the connection is closed
+                                var pollResult = _tcpClient.Client.Poll(10000, SelectMode.SelectRead);
+                                if (pollResult && _tcpClient.Client.Available == 0)
+                                {
+                                    // Connection has been closed by the remote party
+                                    DisposeCurrentTcpClient();
+                                    break;
+                                }
+                                else if (pollResult && _tcpClient.Client.Available > 0)
+                                {
+                                    // Data is available
+                                    var receivedData = ReadTcpData(_stxCharacters, _etxCharacters);
+                                    _logger?.Debug($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
+                                    OnDataReceived?.Invoke(receivedData);
+                                    if (OnDataReceived == null)
+                                        _logger?.Error($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received");
+                                }
+                            }
                         }).Wait(_cancellationTokenSource.Token);
 
                         _cancellationTokenSource.Token.ThrowIfCancellationRequested();

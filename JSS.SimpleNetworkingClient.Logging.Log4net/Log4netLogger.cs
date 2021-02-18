@@ -38,6 +38,12 @@ namespace JSS.SimpleNetworkingClient.Logging.Log4net
             _logger.Debug(message);
         }
 
+        public void Verbose(Func<string> verboseAction)
+        {
+            if (_logger.IsDebugEnabled)
+                _logger.Debug(verboseAction?.Invoke());
+        }
+
         public void Info(string message)
         {
             _logger.Info(message);

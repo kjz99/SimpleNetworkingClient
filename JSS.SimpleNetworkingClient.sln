@@ -13,7 +13,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Artifacts", "Artifacts", "{
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JSS.SimpleNetworkingClient.UnitTests", "JSS.SimpleNetworkingClient.UnitTests\JSS.SimpleNetworkingClient.UnitTests.csproj", "{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSS.SimpleNetworkingClient.Logging.Log4net", "JSS.SimpleNetworkingClient.Logging.Log4net\JSS.SimpleNetworkingClient.Logging.Log4net.csproj", "{863A288B-E869-4A87-A3B9-55A1BF9C97D2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JSS.SimpleNetworkingClient.Logging.Log4net", "JSS.SimpleNetworkingClient.Logging.Log4net\JSS.SimpleNetworkingClient.Logging.Log4net.csproj", "{1EB842F7-9C88-4517-819A-F24E73ED3B51}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -29,10 +29,10 @@ Global
 		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}.Release|Any CPU.Build.0 = Release|Any CPU
-		{863A288B-E869-4A87-A3B9-55A1BF9C97D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{863A288B-E869-4A87-A3B9-55A1BF9C97D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{863A288B-E869-4A87-A3B9-55A1BF9C97D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{863A288B-E869-4A87-A3B9-55A1BF9C97D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1EB842F7-9C88-4517-819A-F24E73ED3B51}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1EB842F7-9C88-4517-819A-F24E73ED3B51}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1EB842F7-9C88-4517-819A-F24E73ED3B51}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1EB842F7-9C88-4517-819A-F24E73ED3B51}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

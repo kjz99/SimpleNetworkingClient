@@ -12,6 +12,12 @@ namespace JSS.SimpleNetworkingClient.Interfaces
         void Debug(string message);
 
         /// <summary>
+        /// logs a if verbose message if verbose logging has been enabled
+        /// </summary>
+        /// <param name="verboseAction"></param>
+        void Verbose(Func<string> verboseAction);
+
+        /// <summary>
         /// Logs a info message to the configured logger
         /// </summary>
         void Info(string message);

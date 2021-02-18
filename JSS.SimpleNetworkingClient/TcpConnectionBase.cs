@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using JSS.SimpleNetworkingClient.Interfaces;
@@ -28,13 +29,15 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Ctor; Sets defaults for the connection base class
         /// </summary>
+        /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
         /// <param name="sendReadTimeout">Send/Read timeout</param>
         /// <param name="bufferSize">
         /// Size of the tcp buffer that determines the amount of bytes that is received/send per chunk to the operating system(OS) networking stack.
         /// This is not equal to the Maximum Transfer Unit, which controls the maximum number of bytes send out from the OS networking stack in one tcp frame
         /// </param>
-        protected TcpConnectionBase(TimeSpan sendReadTimeout, int bufferSize)
+        protected TcpConnectionBase(ISimpleNetworkingClientLogger logger, TimeSpan sendReadTimeout, int bufferSize)
         {
+            _logger = logger;
             _sendReadTimeout = sendReadTimeout;
             _bufferSize = bufferSize;
             _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
@@ -170,6 +173,8 @@ namespace JSS.SimpleNetworkingClient
                 }
             }
 
+            _logger?.Verbose(() => $"Bytes received: {BitConverter.ToString(totalBuffer.ToArray(), 0, totalBuffer.Count)}");
+
             // Check if the start of transmission matches
             if (stxCharacters != null && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
                 throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
@@ -240,6 +245,8 @@ namespace JSS.SimpleNetworkingClient
             var startTime = DateTime.Now;
             var nrOfBytesSend = 0;
 
+            _logger?.Verbose(() => $"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
+
             while (nrOfBytesSend < dataToSend.Length)
             {
                 // Calculate initial send buffer size
@@ -261,7 +268,7 @@ namespace JSS.SimpleNetworkingClient
                 // Select the chunck of data to be send without copying the array and send the data
                 var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => {}, _tcpClient.Client);
                 nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
-                _logger?.Debug($"{nrOfBytesSend} hav been send in total");
+                _logger?.Debug($"{nrOfBytesSend} bytes have been send in total");
             }
 
             _logger?.Debug($"All data has been transmitted");
