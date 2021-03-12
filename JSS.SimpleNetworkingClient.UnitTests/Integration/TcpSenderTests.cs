@@ -18,6 +18,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         private const int Port = 514;
         private Mutex _mutex = new Mutex(false, nameof(TcpSenderTests));
 
+
         [Theory]
         [InlineData("qwertyuiop")]
         [InlineData("qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop")]
@@ -33,17 +34,15 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 receiverClient.Start();
                 are.Set();
 
-                for (int i = 0; i < 500; i++)
+                for (var i = 0; i < 500; i++)
                 {
                     if (receiverClient.Pending())
                     {
-                        var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        // We have a new pending request. Validate the received data, send a response and close the connection
+                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
                         var returnedData = mock.ReadTcpData();
                         returnedData.Should().Be(testData);
-
-                        // Send a response back to the client and immediately close the connection.
                         mock.SendData("ACK");
-
                         receiverClient.Stop();
                         return;
                     }
@@ -61,11 +60,9 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
-                {
-                    await sendConnection.SendData(testData, Encoding.UTF8);
-                    sendConnection.ReceiveData().Should().Be("ACK");
-                }
+                using var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+                await sendConnection.SendData(testData, Encoding.UTF8);
+                sendConnection.ReceiveData().Should().Be("ACK");
             });
 
             if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
@@ -79,11 +76,12 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         }
 
         [Fact]
-        public void TestSenderForMemoryLeaks()
+        public void TestSenderMultiRequest()
         {
             var cancelTokenSrc = new CancellationTokenSource();
             var testData = "QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890QWERTYUIOPasdfghjklzxcvbnm1234567890";
             var are = new AutoResetEvent(false);
+            var senderSemaphore = new SemaphoreSlim(10, 10);
 
             // Start the receiving side
             var receiveTask = Task.Run(async () =>
@@ -96,11 +94,10 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        using (var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync()))
-                        {
-                            var returnedData = mock.ReadTcpData();
-                            returnedData.Should().Be(testData);
-                        }
+                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        var returnedData = mock.ReadTcpData();
+                        returnedData.Should().Be(testData);
+                        senderSemaphore.Release();
                     }
                     else
                     {
@@ -125,7 +122,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         await sendConnection.SendData(testData, Encoding.UTF8);
                     }
 
-                    await Task.Delay(100);
+                    await senderSemaphore.WaitAsync(5000, cancelTokenSrc.Token);
                 }
 
                 cancelTokenSrc.Cancel();

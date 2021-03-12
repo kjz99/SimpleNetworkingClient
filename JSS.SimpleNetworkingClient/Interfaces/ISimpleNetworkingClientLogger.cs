@@ -1,9 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace JSS.SimpleNetworkingClient.Interfaces
 {
+    /// <summary>
+    /// Logger interface used by one of the loggers in the JSS.SimpleNetworkingClient.Logging namespace to implement a specific logging infrastructure like eg; log4net
+    /// </summary>
     public interface ISimpleNetworkingClientLogger
     {
         /// <summary>
@@ -14,8 +15,8 @@ namespace JSS.SimpleNetworkingClient.Interfaces
         /// <summary>
         /// logs a if verbose message if verbose logging has been enabled
         /// </summary>
-        /// <param name="verboseAction"></param>
-        void Verbose(Func<string> verboseAction);
+        /// <param name="message"></param>
+        void Verbose(string message);
 
         /// <summary>
         /// Logs a info message to the configured logger
@@ -36,7 +37,5 @@ namespace JSS.SimpleNetworkingClient.Interfaces
         /// Logs a fatal message to the configured logger
         /// </summary>
         void Fatal(string message, Exception ex = null);
-
-
     }
 }

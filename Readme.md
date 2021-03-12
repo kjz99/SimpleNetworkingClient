@@ -1,9 +1,9 @@
 # Introduction
 The JSS SimpleNetworkingClient is designed for simple point to point tcp connections. For example it can be used to control a payment terminal from a cash register application, running on a POS device.
-It excels in it's ease of use and straight forward functions.
+It excels in it's ease of use and straight forward functions and alleciates you from the many problems that raw tcp communication presents.
 
 # For what is the SimpleNetworkingClient not designed?
-This client is not designed for multithreaded scenario's, where multiple clients connect to a single SimpleNetworkingClient.
+This client is not designed for multithreaded/high performance scenario's, where multiple clients connect to a single SimpleNetworkingClient.
 For that scenario, more in depth design and programming is required anyway. Defeating the purpose of the SimpleNetworkingClient.
 
 # Todo
@@ -12,9 +12,9 @@ The JSS SimpleNetworkingClient is currently not fully implemented and partially 
 # Usage
 TODO
 ## Using the log4net logger
-To use the log4net logger you can instanciate the logger using  one of the constructors.
+To use the log4net logger you can instantiate the logger using one of the constructors.
 As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
-### log4net instance including full repository
+### sample log4net instance including repository and 
 var defaultLoggingRepo = LogManager.CreateRepository("defaultrepository");
 XmlConfigurator.Configure(defaultLoggingRepo, File.ReadAllText("C:\path\to\log4netconfig.xml"));
 var loggerToUse = new Log4netLogger("defaultrepository", "networkingclient");

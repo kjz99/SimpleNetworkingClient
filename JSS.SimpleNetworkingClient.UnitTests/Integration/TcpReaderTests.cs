@@ -16,6 +16,10 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         private TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
         private Mutex _mutex = new Mutex(false, nameof(TcpReaderTests));
 
+        /// <summary>
+        /// Test that the TcpReadConnection can receive and respond asynchronously
+        /// </summary>
+        /// <param name="testData">Data that will be transmitted from the sender to the receiver</param>
         [Theory]
         [InlineData("qwertyuiop")]
         [InlineData("qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop")]
@@ -66,6 +70,10 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 throw sendTask.Exception;
         }
 
+        /// <summary>
+        /// Test that the TcpReadConnection can receive and respond synchronously using the WaitForData extension method
+        /// </summary>
+        /// <param name="testData">Data that will be transmitted from the sender to the receiver</param>
         [Theory]
         [InlineData("abc")]
         [InlineData("qazwsxedcrfv")]

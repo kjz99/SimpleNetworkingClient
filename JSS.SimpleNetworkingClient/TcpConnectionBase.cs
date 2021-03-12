@@ -1,13 +1,11 @@
-﻿using System;
+﻿using JSS.SimpleNetworkingClient.Interfaces;
+using JSS.SimpleNetworkingClient.Utils;
+using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using JSS.SimpleNetworkingClient.Interfaces;
-using JSS.SimpleNetworkingClient.Utils;
 
 namespace JSS.SimpleNetworkingClient
 {
@@ -16,13 +14,13 @@ namespace JSS.SimpleNetworkingClient
     /// </summary>
     public abstract class TcpConnectionBase : IDisposable
     {
+        private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
+        private DateTime _timeoutTimer;
         protected ISimpleNetworkingClientLogger _logger;
         protected int _bufferSize;
-        private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
         protected TimeSpan _sendReadTimeout;
         protected int _sendReadTimeoutMicroseconds;
         protected TcpClient _tcpClient;
-        private DateTime _timeoutTimer;
         protected IList<byte> _stxCharacters;
         protected IList<byte> _etxCharacters;
 
@@ -44,11 +42,11 @@ namespace JSS.SimpleNetworkingClient
 
             if (_sendReadTimeout == null || _sendReadTimeout <= TimeSpan.Zero)
                 throw new ArgumentException($"{nameof(sendReadTimeout)} must be set to a value higher than zero seconds");
-            
+
             if (_bufferSize <= 0)
                 throw new ArgumentException($"{nameof(bufferSize)} must be larger than zero");
 
-            _logger?.Debug($"{nameof(TcpConnectionBase)} ctor has been initialized. {nameof(sendReadTimeout)}={sendReadTimeout}, Tcp buffer size={bufferSize}");
+            _logger?.Verbose($"{nameof(TcpConnectionBase)} ctor has been initialized. {nameof(sendReadTimeout)}={sendReadTimeout}, Tcp buffer size={bufferSize}");
         }
 
         /// <summary>
@@ -65,7 +63,7 @@ namespace JSS.SimpleNetworkingClient
             var bytesRemaining = 0;
             var actualBytesRead = 0;
             var totalBytesRead = 0;
-            var chunckBuffer = new byte[_bufferSize];
+            var chunkBuffer = new byte[_bufferSize];
             List<byte> totalBuffer;
 
             // Check how many bytes will be send by the remote party
@@ -97,7 +95,7 @@ namespace JSS.SimpleNetworkingClient
                 if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
                     throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
-                actualBytesRead = await stream.ReadAsync(chunckBuffer, 0, bytesToRead);
+                actualBytesRead = await stream.ReadAsync(chunkBuffer, 0, bytesToRead);
 
                 // Check if we have actually read any bytes. If we read faster that the transmitting party, we could overtake it.
                 if (actualBytesRead == 0)
@@ -108,8 +106,8 @@ namespace JSS.SimpleNetworkingClient
                 }
 
                 totalBytesRead += actualBytesRead;
-                _logger?.Debug($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
-                totalBuffer.AddRange(chunckBuffer.Take(actualBytesRead));
+                _logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
+                totalBuffer.AddRange(chunkBuffer.Take(actualBytesRead));
                 bytesRemaining -= actualBytesRead;
 
                 if (bytesRemaining > _bufferSize)
@@ -121,8 +119,8 @@ namespace JSS.SimpleNetworkingClient
             // Validate length reported with the actual length received
             if (totalBytesRead != dataStreamTotalLength)
                 throw new NetworkingException($"The actual number of bytes received({totalBytesRead}) doesn't match the number of bytes({dataStreamTotalLength.Value}) that should have been send by the remote party", NetworkingException.NetworkingExceptionTypeEnum.MoreOrLessDataReceived);
-            else
-                _logger?.Debug($"Total nr of {totalBytesRead} bytes have been read");
+
+            _logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
 
             return Encoding.UTF8.GetString(totalBuffer.ToArray(), 0, totalBytesRead);
         }
@@ -159,7 +157,7 @@ namespace JSS.SimpleNetworkingClient
                 // Read available data, but do not exceed the buffer size in one read
                 var bytesRead = stream.Read(chunckBuffer, 0, _bufferSize);
                 totalBytesRead += bytesRead;
-                _logger?.Debug($"{totalBytesRead} bytes have been read in total. Last chunk contains {bytesRead} bytes");
+                _logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {bytesRead} bytes");
                 var actualBytesRead = chunckBuffer.Take(bytesRead).ToList();
                 totalBuffer.AddRange(actualBytesRead);
 
@@ -168,18 +166,18 @@ namespace JSS.SimpleNetworkingClient
                     && actualBytesRead.Count >= etxCharacters.Count
                     && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
                 {
-                    _logger?.Debug($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
+                    _logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
                     break;
                 }
             }
 
-            _logger?.Verbose(() => $"Bytes received: {BitConverter.ToString(totalBuffer.ToArray(), 0, totalBuffer.Count)}");
+            _logger?.Verbose($"Bytes received: {BitConverter.ToString(totalBuffer.ToArray(), 0, totalBuffer.Count)}");
 
             // Check if the start of transmission matches
             if (stxCharacters != null && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
                 throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
-            else
-                _logger?.Debug($"Total nr of {totalBytesRead} bytes have been read");
+
+            _logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
 
             // Return string excluding stx/etx characters
             var startIndex = stxCharacters?.Count ?? 0;
@@ -245,7 +243,8 @@ namespace JSS.SimpleNetworkingClient
             var startTime = DateTime.Now;
             var nrOfBytesSend = 0;
 
-            _logger?.Verbose(() => $"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
+            _logger?.Debug($"Sending data");
+            _logger?.Verbose($"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
 
             while (nrOfBytesSend < dataToSend.Length)
             {
@@ -266,9 +265,9 @@ namespace JSS.SimpleNetworkingClient
                     throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
                 // Select the chunck of data to be send without copying the array and send the data
-                var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => {}, _tcpClient.Client);
+                var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, _tcpClient.Client);
                 nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
-                _logger?.Debug($"{nrOfBytesSend} bytes have been send in total");
+                _logger?.Verbose($"{nrOfBytesSend} bytes have been send in total");
             }
 
             _logger?.Debug($"All data has been transmitted");
@@ -316,7 +315,7 @@ namespace JSS.SimpleNetworkingClient
                 _tcpClient.Dispose();
             }
 
-            _logger?.Debug($"{nameof(DisposeCurrentTcpClient)}() has been executed");
+            _logger?.Verbose($"{nameof(DisposeCurrentTcpClient)}() has been executed");
         }
 
         public void Dispose()

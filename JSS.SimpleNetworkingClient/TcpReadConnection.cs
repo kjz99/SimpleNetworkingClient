@@ -77,10 +77,10 @@ namespace JSS.SimpleNetworkingClient
                                 {
                                     // Data is available
                                     var receivedData = ReadTcpData(_stxCharacters, _etxCharacters);
-                                    _logger?.Debug($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
+                                    _logger?.Verbose($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
                                     OnDataReceived?.Invoke(receivedData);
                                     if (OnDataReceived == null)
-                                        _logger?.Error($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received");
+                                        _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
                                 }
                             }
                         }).Wait(_cancellationTokenSource.Token);

@@ -5,6 +5,7 @@ using System.Text;
 using JSS.SimpleNetworkingClient.Interfaces;
 using log4net;
 using log4net.Config;
+using log4net.Core;
 using log4net.Repository;
 using log4net.Util;
 
@@ -38,10 +39,9 @@ namespace JSS.SimpleNetworkingClient.Logging.Log4net
             _logger.Debug(message);
         }
 
-        public void Verbose(Func<string> verboseAction)
+        public void Verbose(string message)
         {
-            if (_logger.IsDebugEnabled)
-                _logger.Debug(verboseAction?.Invoke());
+            _logger.Logger.Log(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType, Level.Verbose, message, null);
         }
 
         public void Info(string message)
