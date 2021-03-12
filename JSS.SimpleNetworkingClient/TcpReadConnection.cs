@@ -90,7 +90,7 @@ namespace JSS.SimpleNetworkingClient
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
+                    _logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
                     return;
                 }
                 catch (Exception ex)
@@ -119,11 +119,11 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         private void StartTcpListener()
         {
-            _logger?.Debug($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
+            _logger?.Verbose($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
             _tcpListener?.Stop();
             _tcpListener = new TcpListener(IPAddress.Any, _port);
             _tcpListener.Start();
-            _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task has been started successfully");
+            _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {_port} has been started successfully");
         }
 
         /// <summary>
@@ -133,10 +133,10 @@ namespace JSS.SimpleNetworkingClient
         {
             try
             {
-                _logger?.Debug($"Attempting to stop {nameof(TcpListener)}");
+                _logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
                 _tcpListener?.Stop();
                 _tcpListener = null;
-                _logger?.Debug($"{nameof(TcpListener)} has stopped listening for new connections");
+                _logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
             }
             catch (Exception ex)
             {

@@ -243,7 +243,6 @@ namespace JSS.SimpleNetworkingClient
             var startTime = DateTime.Now;
             var nrOfBytesSend = 0;
 
-            _logger?.Debug($"Sending data");
             _logger?.Verbose($"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
 
             while (nrOfBytesSend < dataToSend.Length)
@@ -270,7 +269,7 @@ namespace JSS.SimpleNetworkingClient
                 _logger?.Verbose($"{nrOfBytesSend} bytes have been send in total");
             }
 
-            _logger?.Debug($"All data has been transmitted");
+            _logger?.Verbose($"All data has been transmitted");
         }
 
         /// <summary>
