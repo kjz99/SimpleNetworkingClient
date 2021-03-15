@@ -148,7 +148,10 @@ namespace JSS.SimpleNetworkingClient
 
                 // Detect if the connection has been closed, reset or terminated
                 if (_tcpClient.Client.Connected == false || _tcpClient.Available == 0)
+                {
+                    _logger?.Verbose($"Connection has been closed, reset or terminated");
                     break;
+                }
 
                 // Check if the read has timed out. The TcpClient client.Connected mechanism is not reliable
                 if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
@@ -280,7 +283,7 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Polls the underlying winsock connection to detect if data can be read
         /// </summary>
-        /// <returns>True to indicate that data is available or the connection has been closed</returns>
+        /// <returns>True to indicate that data is available or the connection has been closed. False to indicate the connection is not readable</returns>
         /// <remarks>
         /// IMPORTANT: The Poll method only blocks when the connection is established and data has yet to be send.
         /// That a .Net Socket is reported as being open does not mean that the full connection has been established yet

@@ -65,6 +65,8 @@ namespace JSS.SimpleNetworkingClient
 
                 if (_tcpClient.ConnectAsync(_host, _port).Wait(_sendReadTimeout) == false)
                     throw new TimeoutException();
+                else
+                    _logger?.Info($"{nameof(TcpSendConnection)} on port {_port} has been started successfully");
             }
             catch (Exception ex)
             {

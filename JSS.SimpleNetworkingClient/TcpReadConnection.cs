@@ -58,18 +58,32 @@ namespace JSS.SimpleNetworkingClient
 
                     while (true)
                     {
-                        // Wait for a new incoming connection or a cancellation
-                        var asyncAcceptResult = _tcpListener.BeginAcceptTcpClient(ar => { }, _tcpListener);
-                        Task.Factory.FromAsync(asyncAcceptResult, result =>
+                        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+
+                        if (!_tcpListener.Pending())
                         {
-                            _tcpClient = _tcpListener.EndAcceptTcpClient(result);
+                            // No pending requests are available
+                            await Task.Delay(100);
+                            continue;
+                        }
+                        else if (_tcpClient != null)
+                        {
+                            // There is another pending request, but the current implementation does not support multiple connections
+                            continue;
+                        }
+
+                        _logger?.Verbose($"New pending connection has been received on port {_port}");
+                        _tcpListener.BeginAcceptTcpClient(ar =>
+                        {
+                            _tcpClient = ((TcpListener)ar.AsyncState).EndAcceptTcpClient(ar);
                             while (true)
                             {
                                 // Poll returns true if data is available or the connection is closed
-                                var pollResult = _tcpClient.Client.Poll(10000, SelectMode.SelectRead);
+                                var pollResult = _tcpClient.Client.Poll(-1, SelectMode.SelectRead);
                                 if (pollResult && _tcpClient.Client.Available == 0)
                                 {
                                     // Connection has been closed by the remote party
+                                    _logger?.Verbose($"Connection has been closed by the remote party");
                                     DisposeCurrentTcpClient();
                                     break;
                                 }
@@ -82,10 +96,17 @@ namespace JSS.SimpleNetworkingClient
                                     if (OnDataReceived == null)
                                         _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
                                 }
+                                else
+                                {
+                                    // pollResult is false, indicating the connection is not readable. Treat it as dead and reestablish the connection.
+                                    var errorState = _tcpClient.Client.Poll(1, SelectMode.SelectError);
+                                    var writeState = _tcpClient.Client.Poll(1, SelectMode.SelectWrite);
+                                    _logger?.Verbose($"Connection is not readable and will be treated as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
+                                    DisposeCurrentTcpClient();
+                                    break;
+                                }
                             }
-                        }).Wait(_cancellationTokenSource.Token);
-
-                        _cancellationTokenSource.Token.ThrowIfCancellationRequested();
+                        }, _tcpListener);
                     }
                 }
                 catch (OperationCanceledException)
@@ -107,14 +128,14 @@ namespace JSS.SimpleNetworkingClient
                     }
                 }
             }
-        }       
+        }
 
         /// <summary>
         /// Action that is executed when new data has been received
         /// </summary>
         public Action<string> OnDataReceived { get; set; }
 
-/// <summary>
+        /// <summary>
         /// Open the listening socket and start listening for the remote party
         /// </summary>
         private void StartTcpListener()
