@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
@@ -27,7 +28,9 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public void SendData(string data)
         {
-
+            _stxCharacters = new List<byte>() { 0x02 };
+            _etxCharacters = new List<byte>() { 0x03 };
+            SendData(data, Encoding.UTF8, 0).Wait(10000);
         }
     }
 }

@@ -75,36 +75,48 @@ namespace JSS.SimpleNetworkingClient
                         _logger?.Verbose($"New pending connection has been received on port {_port}");
                         _tcpListener.BeginAcceptTcpClient(ar =>
                         {
-                            _tcpClient = ((TcpListener)ar.AsyncState).EndAcceptTcpClient(ar);
-                            while (true)
+                            try
                             {
-                                // Poll returns true if data is available or the connection is closed
-                                var pollResult = _tcpClient.Client.Poll(-1, SelectMode.SelectRead);
-                                if (pollResult && _tcpClient.Client.Available == 0)
+                                _tcpClient = ((TcpListener)ar.AsyncState).EndAcceptTcpClient(ar);
+                                while (true)
                                 {
-                                    // Connection has been closed by the remote party
-                                    _logger?.Verbose($"Connection has been closed by the remote party");
-                                    DisposeCurrentTcpClient();
-                                    break;
+                                    // Poll returns true if data is available or the connection is closed
+                                    var pollResult = _tcpClient.Client.Poll(-1, SelectMode.SelectRead);
+                                    if (_cancellationTokenSource.IsCancellationRequested)
+                                    {
+                                        return;
+                                    }
+                                    if (pollResult && _tcpClient.Client.Available == 0)
+                                    {
+                                        // Connection has been closed by the remote party
+                                        DisposeCurrentTcpClient();
+                                        break;
+                                    }
+                                    else if (pollResult && _tcpClient.Client.Available > 0)
+                                    {
+                                        // Data is available
+                                        var receivedData = ReadTcpData(_stxCharacters, _etxCharacters);
+                                        _logger?.Verbose($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
+                                        OnDataReceived?.Invoke(receivedData);
+                                        if (OnDataReceived == null)
+                                            _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
+                                    }
+                                    else
+                                    {
+                                        // pollResult is false, indicating the connection is not readable. Treat it as dead and reestablish the connection.
+                                        var errorState = _tcpClient.Client.Poll(1, SelectMode.SelectError);
+                                        var writeState = _tcpClient.Client.Poll(1, SelectMode.SelectWrite);
+                                        _logger?.Verbose($"Connection is not readable so treat is as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
+                                        DisposeCurrentTcpClient();
+                                        break;
+                                    }
                                 }
-                                else if (pollResult && _tcpClient.Client.Available > 0)
-                                {
-                                    // Data is available
-                                    var receivedData = ReadTcpData(_stxCharacters, _etxCharacters);
-                                    _logger?.Verbose($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
-                                    OnDataReceived?.Invoke(receivedData);
-                                    if (OnDataReceived == null)
-                                        _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
-                                }
-                                else
-                                {
-                                    // pollResult is false, indicating the connection is not readable. Treat it as dead and reestablish the connection.
-                                    var errorState = _tcpClient.Client.Poll(1, SelectMode.SelectError);
-                                    var writeState = _tcpClient.Client.Poll(1, SelectMode.SelectWrite);
-                                    _logger?.Verbose($"Connection is not readable and will be treated as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
-                                    DisposeCurrentTcpClient();
-                                    break;
-                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                // This exception case usually should not happen, even during tcp errors and frequently indicates a premature disposal of the tcp socket
+                                // The premature disposal can also be triggered by the OS if it force closes the connection due to an unhandled error
+                                _logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
                             }
                         }, _tcpListener);
                     }
@@ -169,8 +181,8 @@ namespace JSS.SimpleNetworkingClient
 
         public new void Dispose()
         {
-            _tcpListener?.Stop();
             _cancellationTokenSource.Cancel();
+            _tcpListener?.Stop();
             _listenerTask.Wait(_sendReadTimeout);
             base.Dispose();
         }
