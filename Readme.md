@@ -14,14 +14,16 @@ TODO
 ## Using the log4net logger
 To use the log4net logger you can instantiate the logger using one of the constructors.
 As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
-### sample log4net instance including repository and 
+### sample log4net instance using the default repository and config
 var defaultLoggingRepo = LogManager.CreateRepository("defaultrepository");
 XmlConfigurator.Configure(defaultLoggingRepo, File.ReadAllText("C:\path\to\log4netconfig.xml"));
 var loggerToUse = new Log4netLogger("defaultrepository", "networkingclient");
 using var reader = new TcpReadConnection(loggerToUse, 8081, TimeSpan.FromSeconds(10), 1024, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
 
 # Unit/Integration Tests
-TODO
+The JSS.SimpleNetworkingClient.UnitTests contains the unit tests.
+In the Unit subfolder all unit tests are located and in the Integration subfolder all the integration and load tests are located.
+All the unit/integration tests are self contained and only need read/write access to tcp sockets on port 514.
 
 # License
 This application public domain and is available as described by the Creative Commons CC0 1.0 Universal public license.<br/>

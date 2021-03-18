@@ -112,6 +112,7 @@ namespace JSS.SimpleNetworkingClient
                 catch (OperationCanceledException)
                 {
                     _logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
+                    StopTcpListener();
                     return;
                 }
                 catch (Exception ex)
@@ -155,6 +156,7 @@ namespace JSS.SimpleNetworkingClient
             try
             {
                 _logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
+                DisposeCurrentTcpClient();
                 _tcpListener?.Stop();
                 _tcpListener = null;
                 _logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
