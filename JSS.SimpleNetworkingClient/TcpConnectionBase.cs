@@ -315,6 +315,7 @@ namespace JSS.SimpleNetworkingClient
                 _tcpClient.Client = null;
                 _tcpClient.Close();
                 _tcpClient.Dispose();
+                _tcpClient = null;
             }
 
             _logger?.Verbose($"{nameof(DisposeCurrentTcpClient)}() has been executed");
