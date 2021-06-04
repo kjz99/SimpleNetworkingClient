@@ -14,7 +14,7 @@ namespace JSS.SimpleNetworkingClient
     /// This implementation is guaranteed to be thread safe because the tcp listener and tcp IO operations run on a separate thread.
     /// </summary>
     /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
-    public class TcpReadConnection : TcpConnectionBase, IDisposable
+    public class TcpReadConnectionDeadlockSimulator : TcpConnectionBase, IDisposable
     {
         private readonly int _defaultBufferSize = 1024;
         private readonly int _port;
@@ -32,7 +32,7 @@ namespace JSS.SimpleNetworkingClient
         /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
         /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(logger, sendReadTimeout, bufferSize)
+        public TcpReadConnectionDeadlockSimulator(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(logger, sendReadTimeout, bufferSize)
         {
             _port = port;
             _stxCharacters = stxCharacters;
@@ -71,7 +71,7 @@ namespace JSS.SimpleNetworkingClient
                             await Task.Delay(100);
                             continue;
                         }
-                        
+
                         if (!_pendingRequestActive)
                         {
                             // A new pending request has been detected, log it
@@ -85,40 +85,9 @@ namespace JSS.SimpleNetworkingClient
                         {
                             try
                             {
-                                _tcpClient = ((TcpListener)ar.AsyncState).EndAcceptTcpClient(ar);
-                                while (true)
-                                {
-                                    // Poll returns true if data is available or the connection is closed
-                                    var pollResult = _tcpClient.Client.Poll(-1, SelectMode.SelectRead);
-                                    if (_cancellationTokenSource.IsCancellationRequested)
-                                    {
-                                        return;
-                                    }
-                                    if (pollResult && _tcpClient.Client.Available == 0)
-                                    {
-                                        // Connection has been closed by the remote party
-                                        DisposeCurrentTcpClient();
-                                        break;
-                                    }
-                                    else if (pollResult && _tcpClient.Client.Available > 0)
-                                    {
-                                        // Data is available
-                                        var receivedData = ReadTcpData(_stxCharacters, _etxCharacters);
-                                        _logger?.Verbose($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
-                                        OnDataReceived?.Invoke(receivedData);
-                                        if (OnDataReceived == null)
-                                            _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
-                                    }
-                                    else
-                                    {
-                                        // pollResult is false, indicating the connection is not readable. Treat it as dead and reestablish the connection.
-                                        var errorState = _tcpClient.Client.Poll(1, SelectMode.SelectError);
-                                        var writeState = _tcpClient.Client.Poll(1, SelectMode.SelectWrite);
-                                        _logger?.Verbose($"Connection is not readable so treat is as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
-                                        DisposeCurrentTcpClient();
-                                        break;
-                                    }
-                                }
+                                // Deadlock the listener
+                                Task.Delay(TimeSpan.MaxValue).Wait();
+                                //_tcpClient = ((TcpListener)ar.AsyncState).EndAcceptTcpClient(ar);
                             }
                             catch (Exception ex)
                             {
