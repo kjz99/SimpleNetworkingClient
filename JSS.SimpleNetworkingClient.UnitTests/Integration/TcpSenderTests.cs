@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -62,7 +61,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 using var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
                 await sendConnection.SendData(testData, Encoding.UTF8);
-                sendConnection.ReceiveData().Should().Be("ACK");
+                sendConnection.ReceiveDataAsString().Should().Be("ACK");
             });
 
             if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)

@@ -1,26 +1,22 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace JSS.SimpleNetworkingClient.Extensions
+namespace JSS.SimpleNetworkingClient.Extensions;
+
+public static class TcpReadConnectionExtensions
 {
-    public static class TcpReadConnectionExtensions
-    {
-        /// <summary>
-        /// Returns a task that synchronously waits for the data.
-        /// </summary>
-        /// <param name="readConnection">Tcp Read connection</param>
-        /// <param name="timeout">Timeout to wait for data to be received</param>
-        /// <returns></returns>
-        public static async Task<string> WaitForData(this TcpReadConnection readConnection, TimeSpan timeout)
-        {
-            return await Task.Run(() =>
+    /// <summary>
+    /// Returns a task that synchronously waits for the data
+    /// </summary>
+    /// <param name="readConnection">Tcp Read connection</param>
+    /// <param name="timeout">Timeout to wait for data to be received</param>
+    /// <returns></returns>
+    public static async Task<string> WaitForData(this TcpReadConnection readConnection, TimeSpan timeout)
+        => await Task.Run(() =>
             {
-                string result = null;
-                var dataReceivedAutoResetEvent = new AutoResetEvent(false);
+                var result = string.Empty;
+                AutoResetEvent dataReceivedAutoResetEvent = new(false);
 
                 readConnection.OnDataReceived = data =>
                 {
@@ -28,11 +24,10 @@ namespace JSS.SimpleNetworkingClient.Extensions
                     dataReceivedAutoResetEvent.Set();
                 };
 
-                if (!dataReceivedAutoResetEvent.WaitOne(timeout))
-                    throw new NetworkingException("Failed waiting for data within the given timeout", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
-
-                return result;
-            });
-        }
-    }
+                return !dataReceivedAutoResetEvent.WaitOne(timeout)
+                    ? throw new NetworkingException("Failed waiting for data within the given timeout", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout)
+                    : result
+                ;
+            }
+        );
 }

@@ -4,12 +4,12 @@ It excels in it's ease of use and straight forward functions and alleviates you 
 
 # For what is the SimpleNetworkingClient not designed?
 This client is not designed for multithreaded/high performance scenario's, where multiple clients connect to a single SimpleNetworkingClient.
-For that scenario, more in depth design and programming is required anyway. Defeating the purpose of the SimpleNetworkingClient.
+For that scenario, more in depth design and programming is required anyway, defeating the purpose of the SimpleNetworkingClient.
 
 # Usage
-The following use case scenario's are most commonly used. Also see the unit tests for some real world working examples on how to use the library.
+The following use case scenario's are most commonly used. Also see the integration tests for some real world working examples on how to use the library.
 ## Receiving data
-TODO...
+
 ## Sending data
 TODO...
 
@@ -18,14 +18,16 @@ TODO...
 To use the log4net logger you can instantiate the logger using one of the constructors.
 As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
 ### sample log4net instance using the default repository and config
+```csharp
 var defaultLoggingRepo = LogManager.CreateRepository("defaultrepository");
 XmlConfigurator.Configure(defaultLoggingRepo, File.ReadAllText("C:\path\to\log4netconfig.xml"));
 var loggerToUse = new Log4netLogger("defaultrepository", "networkingclient");
 using var reader = new TcpReadConnection(loggerToUse, 8081, TimeSpan.FromSeconds(10), 1024, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
-
-## Using the Sewrilog logger
+```
+## Using the Serilog logger
 To use the serilog logger pass the ILogger instance to the SerilogLogger constructor.
 As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
+
 # Sample Serilog logger instance using appsettings.json
 TODO...
 

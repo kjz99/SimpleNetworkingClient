@@ -18,7 +18,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public string ReadTcpData()
         {
-            return base.ReadTcpData(new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+            return base.ReadTcpDataAsString(new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
         }
 
         public async Task<string> ReadTcpDataWithLength()
