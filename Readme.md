@@ -23,6 +23,11 @@ var defaultLoggingRepo = LogManager.CreateRepository("defaultrepository");
 XmlConfigurator.Configure(defaultLoggingRepo, File.ReadAllText("C:\path\to\log4netconfig.xml"));
 var loggerToUse = new Log4netLogger("defaultrepository", "networkingclient");
 using var reader = new TcpReadConnection(loggerToUse, 8081, TimeSpan.FromSeconds(10), 1024, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+reader.OnDataReceived = (returnedData) =>
+    {
+        Console.WriteLine($"Received data: {returnedData}");
+        reader.SendData("ACK", Encoding.UTF8).Wait(_defaultTimeout);
+    };
 ```
 ## Using the Serilog logger
 To use the serilog logger pass the ILogger instance to the SerilogLogger constructor.

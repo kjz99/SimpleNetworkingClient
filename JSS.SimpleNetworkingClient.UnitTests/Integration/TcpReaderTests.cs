@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using JSS.SimpleNetworkingClient.Utils;
 
 namespace JSS.SimpleNetworkingClient.UnitTests.Integration
 {
@@ -264,6 +265,67 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 using var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
                 await sendConnection.SendData(testData, Encoding.UTF8);
                 sendConnection.ReceiveDataAsString().Should().Be("ACK");
+            });
+
+            if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
+                throw new TimeoutException("Send or receive task has not completed within the allotted time");
+
+            // Make sure that exceptions on other thread tasks fail the unit test
+            if (receiveTask.Exception != null)
+                throw receiveTask.Exception;
+            if (sendTask.Exception != null)
+                throw sendTask.Exception;
+        }
+        
+        /// <summary>
+        /// TCP is a streaming protocol, so it is possible to receive multiple messages in one transmission if they are send fast enough after each other.
+        /// The client should thus be able to handle multiple messages starting and ending with the stx and etx bytes.
+        /// reader.OnDataReceived should then be triggered multiple times.
+        /// </summary>
+        /// <exception cref="NotImplementedException"></exception>
+        [Fact]
+        public void TcpReaderShouldHandleMultipleMessagesInOneTransmission()
+        {
+            _mutex.WaitOne(30000);
+            var are = new AutoResetEvent(false);
+            var resultCounter = 0;
+            var testData = new [] { "qwertyuiop", "asdfghjkl" };
+
+            // Start the receiving side
+            var receiveTask = Task.Run(async () =>
+            {
+                var dataReceived = new AutoResetEventEx(false);
+                using var reader = new TcpReadConnection(null, Port, _defaultTimeout, 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }, true);
+                reader.OnDataReceived = (returnedData) =>
+                {
+                    try
+                    {
+                        returnedData.Should().Be(testData[resultCounter]);
+                        resultCounter++;
+                        dataReceived.Set();
+                    }
+                    catch (Exception e)
+                    {
+                        dataReceived.Set(e);
+                    }
+                };
+                
+                reader.StartListening();
+                are.Set();
+                dataReceived.WaitOne(_defaultTimeout);
+            });
+
+            // Wait for the receiver to start listening
+            are.WaitOne(5000);
+
+            // Start sending data
+            var sendTask = Task.Run(async () =>
+            {
+                using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                {
+                    foreach (var dataToSend in testData)
+                        await sendConnection.SendData(dataToSend, Encoding.UTF8);
+                }
             });
 
             if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)

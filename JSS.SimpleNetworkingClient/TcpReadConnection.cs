@@ -18,6 +18,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
 {
     private readonly int _defaultBufferSize = 1024;
     private readonly int _port;
+    private readonly bool _throwInsteadOfReconnect;
     private bool _pendingRequestActive = false;
     private Task _listenerTask;
     private CancellationTokenSource _cancellationTokenSource;
@@ -32,9 +33,11 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
-    public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = default, IList<byte> etxCharacters = default) : base(logger, sendReadTimeout, bufferSize)
+    /// <param name="throwInsteadOfReconnect">Throws exception on a tcp error instead of trying to reinitialize the tcp listener</param>
+    public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = default, IList<byte> etxCharacters = default, bool throwInsteadOfReconnect = false) : base(logger, sendReadTimeout, bufferSize)
     {
         _port = port;
+        _throwInsteadOfReconnect = throwInsteadOfReconnect;
         _stxCharacters = stxCharacters;
         _etxCharacters = etxCharacters;
     }
@@ -81,8 +84,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                     // First pending request is available
                     _pendingRequestActive = true;
                     _logger?.Debug($"First pending request has been detected on port {_port}");
-
-                    _logger?.Verbose($"New pending connection has been received on port {_port}");
+                    
                     _tcpListener.BeginAcceptTcpClient(ar =>
                     {
                         try
@@ -127,6 +129,8 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                             // The premature disposal can also be triggered by the OS if it force closes the connection due to an unhandled error
                             _logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
                             DisposeCurrentTcpClient();
+                            if (_throwInsteadOfReconnect)
+                                throw;
                         }
                     }, _tcpListener);
                 }
@@ -142,11 +146,15 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                 if (ex.InnerException != default && ex.InnerException.GetType() == typeof(NetworkingException))
                 {
                     _logger?.Error("Networking Exception has been received", ex.InnerException);
+                    if (_throwInsteadOfReconnect)
+                        throw;
                 }
                 else
                 {
                     _logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
                     StopTcpListener();
+                    if (_throwInsteadOfReconnect)
+                        throw;
                     await Task.Delay(TimeSpan.FromSeconds(10));
                 }
             }
