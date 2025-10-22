@@ -43,8 +43,7 @@ All the unit/integration tests are self contained and only need read/write acces
 
 # Pitfalls
 ## The TcpClient is not reliable on Windows
-The TcpClient connection is not reliable on Windows. It is recommended to use a verification mechanism(eg, ping message) to detect if the connection has failed.
-On Windows, the Winsock tcp stack that is used by the .Net TcpClient, has known design deficiencies.<br/>
+The TcpClient connection is not fully reliable on Windows. The Winsock tcp stack that is used by the .Net TcpClient, has known design deficiencies.<br/>
 It does not always detect that a remote party has closed the connection, leading to zombie connections.<br/>
 This can cause the TcpClient to think that the connection is still open. Reading from the stream will not return an exception.<br/>
 Also, sending data will just be discarded by Winsock without any indication that a problem has occurred.<br/>
