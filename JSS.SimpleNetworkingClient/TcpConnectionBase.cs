@@ -1,11 +1,11 @@
-﻿using JSS.SimpleNetworkingClient.Interfaces;
-using JSS.SimpleNetworkingClient.Utils;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
+using JSS.SimpleNetworkingClient.Interfaces;
+using JSS.SimpleNetworkingClient.Utils;
 
 namespace JSS.SimpleNetworkingClient;
 
@@ -16,37 +16,47 @@ public abstract class TcpConnectionBase : IDisposable
 {
     private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
     private DateTime _timeoutTimer;
-    protected ISimpleNetworkingClientLogger _logger;
-    protected int _bufferSize;
+    private readonly Queue<byte[]> _messageBuffer;
+    
+    protected readonly ISimpleNetworkingClientLogger Logger;
+    protected int IpStackBufferSize;
     protected TimeSpan _sendReadTimeout;
     protected int _sendReadTimeoutMicroseconds;
     protected TcpClient _tcpClient;
-    protected IList<byte> _stxCharacters;
-    protected IList<byte> _etxCharacters;
+    protected byte[] _stxCharacters;
+    protected byte[] _etxCharacters;
 
     /// <summary>
     /// Ctor; Sets defaults for the connection base class
     /// </summary>
     /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
     /// <param name="sendReadTimeout">Send/Read timeout when the connection is stale</param>
-    /// <param name="bufferSize">
-    /// Size of the tcp buffer that determines the amount of bytes that is received/send per chunk to the operating system(OS) networking stack
-    /// This is not equal to the Maximum Transfer Unit, which controls the maximum number of bytes send out from the OS networking stack in one tcp frame
+    /// <param name="ipStackBufferSize">
+    /// Size of the tcp buffer that determines the amount of bytes that is received/send per chunk to the operating system networking stack.
+    /// This is not equal to the Maximum Transfer Unit, which controls the maximum number of bytes send out from the OS networking stack in one tcp frame.
+    /// If the 
     /// </param>
-    protected TcpConnectionBase(ISimpleNetworkingClientLogger logger, TimeSpan sendReadTimeout, int bufferSize)
+    /// <param name="messageQueueSize">
+    /// Contains the maximum number of messages that will be cached in the internal message queue.
+    /// Every call to ReadTcpData or is derivatives will return one message from the buffer.
+    /// If the buffer overflows, an exception is thrown and the connection is closed.
+    /// Remaining messages in the buffer will then be discarded.
+    /// </param>
+    protected TcpConnectionBase(ISimpleNetworkingClientLogger logger, TimeSpan sendReadTimeout, int ipStackBufferSize, int messageQueueSize = 128)
     {
-        _logger = logger;
+        Logger = logger;
         _sendReadTimeout = sendReadTimeout;
-        _bufferSize = bufferSize;
+        IpStackBufferSize = ipStackBufferSize;
+        _messageBuffer = new Queue<byte[]>(messageQueueSize);
         _sendReadTimeoutMicroseconds = (int)_sendReadTimeout.TotalMilliseconds * 1000;
 
         if (_sendReadTimeout == default || _sendReadTimeout <= TimeSpan.Zero)
             throw new ArgumentException($"{nameof(sendReadTimeout)} must be set to a value higher than zero seconds");
 
-        if (_bufferSize <= 0)
-            throw new ArgumentException($"{nameof(bufferSize)} must be larger than zero");
+        if (IpStackBufferSize <= 0)
+            throw new ArgumentException($"{nameof(ipStackBufferSize)} must be larger than zero");
 
-        _logger?.Verbose($"{nameof(TcpConnectionBase)} ctor has been initialized. {nameof(sendReadTimeout)}={sendReadTimeout}, Tcp buffer size={bufferSize}");
+        Logger?.Verbose($"{nameof(TcpConnectionBase)} ctor has been initialized. {nameof(sendReadTimeout)}={sendReadTimeout}, {nameof(ipStackBufferSize)}={ipStackBufferSize}, {nameof(messageQueueSize)}={messageQueueSize}");
     }
 
     /// <summary>
@@ -63,7 +73,7 @@ public abstract class TcpConnectionBase : IDisposable
         var bytesRemaining = 0;
         var actualBytesRead = 0;
         var totalBytesRead = 0;
-        var chunkBuffer = new byte[_bufferSize];
+        var chunkBuffer = new byte[IpStackBufferSize];
         List<byte> totalBuffer;
 
         // Check how many bytes will be send by the remote party
@@ -79,12 +89,12 @@ public abstract class TcpConnectionBase : IDisposable
         // Determine if more bytes are available than the buffer size
         totalBuffer = new(dataStreamTotalLength);
         bytesRemaining = dataStreamTotalLength;
-        bytesToRead = bytesRemaining > _bufferSize
-            ? _bufferSize
+        bytesToRead = bytesRemaining > IpStackBufferSize
+            ? IpStackBufferSize
             : bytesRemaining
         ;
 
-        // Read all the data in _bufferSize chunks until all the data has been read
+        // Read all the data in IpStackBufferSize chunks until all the data has been read
         while (bytesRemaining > 0)
         {
             // Detect if the connection has been closed, reset or terminated
@@ -106,12 +116,12 @@ public abstract class TcpConnectionBase : IDisposable
             }
 
             totalBytesRead += actualBytesRead;
-            _logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
+            Logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
             totalBuffer.AddRange(chunkBuffer.Take(actualBytesRead));
             bytesRemaining -= actualBytesRead;
 
-            bytesToRead = bytesRemaining > _bufferSize
-                ? _bufferSize
+            bytesToRead = bytesRemaining > IpStackBufferSize
+                ? IpStackBufferSize
                 : bytesRemaining
             ;
         }
@@ -120,7 +130,7 @@ public abstract class TcpConnectionBase : IDisposable
         if (totalBytesRead != dataStreamTotalLength)
             throw new NetworkingException($"The actual number of bytes received({totalBytesRead}) doesn't match the number of bytes({dataStreamTotalLength.Value}) that should have been send by the remote party", NetworkingException.NetworkingExceptionTypeEnum.MoreOrLessDataReceived);
 
-        _logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
+        Logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
 
         return Encoding.UTF8.GetString([.. totalBuffer], 0, totalBytesRead);
     }
@@ -131,7 +141,7 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>UTF8 formatted string with the data</returns>
-    protected string ReadTcpDataAsString(IList<byte> stxCharacters, IList<byte> etxCharacters) 
+    protected string ReadTcpDataAsString(byte[] stxCharacters, byte[] etxCharacters) 
         => Encoding.UTF8.GetString([.. ReadTcpData(stxCharacters, etxCharacters)]);
 
     /// <summary>
@@ -140,13 +150,18 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>byte array with the data</returns>
-    protected byte[] ReadTcpData(IList<byte> stxCharacters, IList<byte> etxCharacters)
+    /// <remarks>
+    /// I dont use a seperate thread for reading the data because this could cause a buffer overflow if the application that calls this method is too slow.
+    /// 
+    /// </remarks>
+    protected byte[] ReadTcpData(byte[] stxCharacters, byte[] etxCharacters)
     {
         var stream = _tcpClient.GetStream();
         _timeoutTimer = DateTime.Now;
         var totalBytesRead = 0;
-        var chunkBuffer = new byte[_bufferSize];
-        List<byte> totalBuffer = [];
+        var singleMessageBuffer = new byte[IpStackBufferSize * 2];
+        var loopBuffer = new byte[IpStackBufferSize];
+        //List<byte> totalBuffer = [];
 
         // Read all the data until the tcp connection has been closed
         while (PollTcpClient())
@@ -159,23 +174,63 @@ public abstract class TcpConnectionBase : IDisposable
             if (_tcpClient.Client.Connected == false || _tcpClient.Available == 0)
                 throw new NetworkingException($"Connection has been closed, reset or terminated", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
 
-            // Check if the read has timed out. The TcpClient client.Connected mechanism is not reliable
+            // Check if the read has timed out. The TcpClient.Connected mechanism is not reliable
             if (DateTime.Now > _timeoutTimer + _sendReadTimeout)
                 throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
+            // Read available data and get the nr of bytes received
+            var bytesRead = stream.Read(loopBuffer, 0, IpStackBufferSize);
+            
+            // Check that the singleMessageBuffer doesn't overflow
+            if (totalBytesRead + bytesRead > IpStackBufferSize)
+                throw new NetworkingException($"internal chekcBuffer overflowed. Bytes read last={bytesRead}, Bytes read before last={totalBytesRead}", NetworkingException.NetworkingExceptionTypeEnum.BufferOverflow);
+            
+            // Add the bytes read to the end of the single message buffer
+            Array.Copy(loopBuffer, 0, singleMessageBuffer, totalBytesRead, bytesRead);
+            
+            // Check that the stream starts with the stx characters
+            for (int i = 0; i < stxCharacters.Length; i++)
+                if (singleMessageBuffer[i] != stxCharacters[i])
+                    throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
+            
+            while (true)
+            {
+                // Search for the first etx characters in the stream, indicating one message has been received
+                var singleMessageBufferSpan = singleMessageBuffer.AsSpan();
+                var etxCharactersIndex = singleMessageBufferSpan.IndexOf(etxCharacters.AsSpan());
+                if (etxCharactersIndex > -1)
+                {
+                    // Enqueue message for later processing without stx and etx characters
+                    _messageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length .. etxCharactersIndex].ToArray());
+
+                    // Move remaining bytes to the start of the buffer.
+                    Array.Copy(singleMessageBuffer, etxCharactersIndex, singleMessageBuffer, 0, singleMessageBuffer.Length - etxCharactersIndex);
+                    
+                    // Set the first available index of the singleMessageBuffer to after any remaining data that can be still in the buffer.
+                    totalBytesRead -= etxCharactersIndex;
+                    if (totalBytesRead < 0)
+                        throw new ArgumentException($"totalBytesRead cannot be negative. {nameof(singleMessageBuffer)} contains: {BitConverter.ToString([.. singleMessageBuffer], 0, singleMessageBuffer.Length)}");
+                }
+                else
+                {
+                    // No complete messages remain in the buffer
+                    break;
+                }
+            }
+
             // Read available data, but do not exceed the buffer size in one read
-            var bytesRead = stream.Read(chunkBuffer, 0, _bufferSize);
-            totalBytesRead += bytesRead;
-            _logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {bytesRead} bytes");
-            var actualBytesRead = chunkBuffer.Take(bytesRead).ToList();
-            totalBuffer.AddRange(actualBytesRead);
+            // var bytesRead = stream.Read(singleMessageBuffer, 0, IpStackBufferSize);
+            // totalBytesRead += bytesRead;
+            // Logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {bytesRead} bytes");
+            // var actualBytesRead = singleMessageBuffer.Take(bytesRead).ToList();
+            // totalBuffer.AddRange(actualBytesRead);
 
             // Check if the end of the actual bytes read matches the supplied end of stream character(s)
             if (etxCharacters != default
                 && actualBytesRead.Count >= etxCharacters.Count
                 && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
             {
-                _logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
+                Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
                 break;
             }
         }
@@ -183,13 +238,13 @@ public abstract class TcpConnectionBase : IDisposable
         if (totalBytesRead == 0)
             return [];
 
-        _logger?.Verbose($"Bytes received: {BitConverter.ToString([.. totalBuffer], 0, totalBuffer.Count)}");
+        Logger?.Verbose($"Bytes received: {BitConverter.ToString([.. totalBuffer], 0, totalBuffer.Count)}");
         
         // Check if the start of transmission matches
         if (stxCharacters != default && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
             throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
 
-        _logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
+        Logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
 
         // Return string excluding stx/etx characters
         var startIndex = stxCharacters?.Count ?? 0;
@@ -201,7 +256,7 @@ public abstract class TcpConnectionBase : IDisposable
     {
         _timeoutTimer = DateTime.Now;
         var totalBytesRead = 0;
-        var chunckBuffer = new byte[_bufferSize];
+        var chunckBuffer = new byte[IpStackBufferSize];
         List<byte> totalBuffer = [];
 
         // Read all the data until the tcp connection has been closed
@@ -255,10 +310,10 @@ public abstract class TcpConnectionBase : IDisposable
         var startTime = DateTime.Now;
         var nrOfBytesSend = 0;
 
-        _logger?.Verbose($"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
+        Logger?.Verbose($"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
 
         if (_tcpClient == null) {
-            _logger?.Verbose($"SendData: Client not initialized");
+            Logger?.Verbose($"SendData: Client not initialized");
             return;
         }
         
@@ -266,7 +321,7 @@ public abstract class TcpConnectionBase : IDisposable
         {
             // Calculate initial send buffer size
             var totalBytesStillToSend = dataToSend.Length - nrOfBytesSend;
-            var nrOfBytesToSend = totalBytesStillToSend > _bufferSize ? _bufferSize : totalBytesStillToSend;
+            var nrOfBytesToSend = totalBytesStillToSend > IpStackBufferSize ? IpStackBufferSize : totalBytesStillToSend;
 
             // Check for a timeout
             if (DateTime.Now > startTime + _sendReadTimeout)
@@ -283,10 +338,10 @@ public abstract class TcpConnectionBase : IDisposable
             // Select the chunck of data to be send without copying the array and send the data
             var sendOperation = _tcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, _tcpClient.Client);
             nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => _tcpClient.Client.EndSend(result));
-            _logger?.Verbose($"{nrOfBytesSend} bytes have been send in total");
+            Logger?.Verbose($"{nrOfBytesSend} bytes have been send in total");
         }
 
-        _logger?.Verbose($"All data has been transmitted");
+        Logger?.Verbose($"All data has been transmitted");
     }
 
     /// <summary>
@@ -326,7 +381,7 @@ public abstract class TcpConnectionBase : IDisposable
             _tcpClient = default;
         }
 
-        _logger?.Verbose($"{nameof(DisposeCurrentTcpClient)}() has been executed");
+        Logger?.Verbose($"{nameof(DisposeCurrentTcpClient)}() has been executed");
     }
 
     public void Dispose()
