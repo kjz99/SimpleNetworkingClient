@@ -28,7 +28,7 @@ public class TcpSendConnection : TcpConnectionBase, IDisposable
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <param name="throwInsteadOfReconnect">Throws exception on a tcp error instead of trying to reinitialize the tcp listener</param>
-    public TcpSendConnection(ISimpleNetworkingClientLogger logger, string host, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, IList<byte> stxCharacters = default, IList<byte> etxCharacters = default, bool throwInsteadOfReconnect = false) : base(logger, sendReadTimeout, ipStackBufferSize)
+    public TcpSendConnection(ISimpleNetworkingClientLogger logger, string host, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, byte[] stxCharacters = default, byte[] etxCharacters = default, bool throwInsteadOfReconnect = false) : base(logger, sendReadTimeout, ipStackBufferSize)
     {
         _host = host;
         _port = port;

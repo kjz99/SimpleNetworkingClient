@@ -25,6 +25,9 @@ public abstract class TcpConnectionBase : IDisposable
     protected TcpClient _tcpClient;
     protected byte[] _stxCharacters;
     protected byte[] _etxCharacters;
+    private byte[] _singleMessageBuffer;
+    private byte[] _loopBuffer;
+    private int _totalBytesRead = 0;
 
     /// <summary>
     /// Ctor; Sets defaults for the connection base class
@@ -57,6 +60,8 @@ public abstract class TcpConnectionBase : IDisposable
             throw new ArgumentException($"{nameof(ipStackBufferSize)} must be larger than zero");
 
         Logger?.Verbose($"{nameof(TcpConnectionBase)} ctor has been initialized. {nameof(sendReadTimeout)}={sendReadTimeout}, {nameof(ipStackBufferSize)}={ipStackBufferSize}, {nameof(messageQueueSize)}={messageQueueSize}");
+        _singleMessageBuffer = new byte[IpStackBufferSize * 2];
+        _loopBuffer = new byte[IpStackBufferSize];
     }
 
     /// <summary>
@@ -156,12 +161,12 @@ public abstract class TcpConnectionBase : IDisposable
     /// </remarks>
     protected byte[] ReadTcpData(byte[] stxCharacters, byte[] etxCharacters)
     {
+        // If there are any messages in the queue from the last time this method was called, return the first message in the queue
+        if (_messageBuffer.Any())
+            return _messageBuffer.Dequeue();
+        
         var stream = _tcpClient.GetStream();
         _timeoutTimer = DateTime.Now;
-        var totalBytesRead = 0;
-        var singleMessageBuffer = new byte[IpStackBufferSize * 2];
-        var loopBuffer = new byte[IpStackBufferSize];
-        //List<byte> totalBuffer = [];
 
         // Read all the data until the tcp connection has been closed
         while (PollTcpClient())
@@ -179,37 +184,38 @@ public abstract class TcpConnectionBase : IDisposable
                 throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {_sendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
             // Read available data and get the nr of bytes received
-            var bytesRead = stream.Read(loopBuffer, 0, IpStackBufferSize);
+            var bytesRead = stream.Read(_loopBuffer, 0, IpStackBufferSize);
             
             // Check that the singleMessageBuffer doesn't overflow
-            if (totalBytesRead + bytesRead > IpStackBufferSize)
-                throw new NetworkingException($"internal chekcBuffer overflowed. Bytes read last={bytesRead}, Bytes read before last={totalBytesRead}", NetworkingException.NetworkingExceptionTypeEnum.BufferOverflow);
+            if (_totalBytesRead + bytesRead > IpStackBufferSize)
+                throw new NetworkingException($"internal chekcBuffer overflowed. Bytes read last={bytesRead}, Bytes read before last={_totalBytesRead}", NetworkingException.NetworkingExceptionTypeEnum.BufferOverflow);
             
             // Add the bytes read to the end of the single message buffer
-            Array.Copy(loopBuffer, 0, singleMessageBuffer, totalBytesRead, bytesRead);
+            Array.Copy(_loopBuffer, 0, _singleMessageBuffer, _totalBytesRead, bytesRead);
             
             // Check that the stream starts with the stx characters
             for (int i = 0; i < stxCharacters.Length; i++)
-                if (singleMessageBuffer[i] != stxCharacters[i])
+                if (_singleMessageBuffer[i] != stxCharacters[i])
                     throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
             
             while (true)
             {
                 // Search for the first etx characters in the stream, indicating one message has been received
-                var singleMessageBufferSpan = singleMessageBuffer.AsSpan();
+                var singleMessageBufferSpan = _singleMessageBuffer.AsSpan();
                 var etxCharactersIndex = singleMessageBufferSpan.IndexOf(etxCharacters.AsSpan());
                 if (etxCharactersIndex > -1)
                 {
                     // Enqueue message for later processing without stx and etx characters
+                    Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Pushing message to queue. Message: {BitConverter.ToString([.. singleMessageBufferSpan[.. etxCharactersIndex]], 0, etxCharactersIndex)}");
                     _messageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length .. etxCharactersIndex].ToArray());
 
                     // Move remaining bytes to the start of the buffer.
-                    Array.Copy(singleMessageBuffer, etxCharactersIndex, singleMessageBuffer, 0, singleMessageBuffer.Length - etxCharactersIndex);
+                    Array.Copy(_singleMessageBuffer, etxCharactersIndex, _singleMessageBuffer, 0, _singleMessageBuffer.Length - etxCharactersIndex);
                     
                     // Set the first available index of the singleMessageBuffer to after any remaining data that can be still in the buffer.
-                    totalBytesRead -= etxCharactersIndex;
-                    if (totalBytesRead < 0)
-                        throw new ArgumentException($"totalBytesRead cannot be negative. {nameof(singleMessageBuffer)} contains: {BitConverter.ToString([.. singleMessageBuffer], 0, singleMessageBuffer.Length)}");
+                    _totalBytesRead -= etxCharactersIndex;
+                    if (_totalBytesRead < 0)
+                        throw new ArgumentException($"totalBytesRead cannot be negative. {nameof(_singleMessageBuffer)} contains: {BitConverter.ToString([.. _singleMessageBuffer], 0, _singleMessageBuffer.Length)}");
                 }
                 else
                 {
@@ -226,30 +232,32 @@ public abstract class TcpConnectionBase : IDisposable
             // totalBuffer.AddRange(actualBytesRead);
 
             // Check if the end of the actual bytes read matches the supplied end of stream character(s)
-            if (etxCharacters != default
-                && actualBytesRead.Count >= etxCharacters.Count
-                && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
-            {
-                Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
-                break;
-            }
+            // if (etxCharacters != default
+            //     && actualBytesRead.Count >= etxCharacters.Count
+            //     && actualBytesRead.Skip(actualBytesRead.Count - etxCharacters.Count).Take(etxCharacters.Count).Except(etxCharacters).Any() == false)
+            // {
+            //     Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Returning data that has thus far been received excluding the stx and etx characters.");
+            //     break;
+            // }
         }
-
-        if (totalBytesRead == 0)
-            return [];
-
-        Logger?.Verbose($"Bytes received: {BitConverter.ToString([.. totalBuffer], 0, totalBuffer.Count)}");
         
-        // Check if the start of transmission matches
-        if (stxCharacters != default && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
-            throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
+        return _messageBuffer.Any() ? _messageBuffer.Dequeue() : [];
 
-        Logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
-
-        // Return string excluding stx/etx characters
-        var startIndex = stxCharacters?.Count ?? 0;
-        var endCount = totalBytesRead - startIndex - etxCharacters?.Count ?? 0;
-        return totalBuffer.Skip(startIndex).Take(endCount).ToArray();
+        // if (_totalBytesRead == 0)
+        //     return [];
+        //
+        // Logger?.Verbose($"Bytes received: {BitConverter.ToString([.. totalBuffer], 0, totalBuffer.Count)}");
+        //
+        // // Check if the start of transmission matches
+        // if (stxCharacters != default && (totalBuffer.Count < stxCharacters.Count || totalBuffer.Take(stxCharacters.Count).Except(stxCharacters).Any()))
+        //     throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
+        //
+        // Logger?.Verbose($"Total nr of {_totalBytesRead} bytes have been read");
+        //
+        // // Return string excluding stx/etx characters
+        // var startIndex = stxCharacters?.Count ?? 0;
+        // var endCount = _totalBytesRead - startIndex - etxCharacters?.Count ?? 0;
+        // return totalBuffer.Skip(startIndex).Take(endCount).ToArray();
     }
     
     protected string ReadTcpDataSocket(Socket socket)

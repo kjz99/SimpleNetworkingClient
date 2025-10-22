@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
@@ -18,7 +17,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public string ReadTcpData()
         {
-            return base.ReadTcpDataAsString(new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+            return base.ReadTcpDataAsString([ 0x02 ], [ 0x03 ]);
         }
 
         public async Task<string> ReadTcpDataWithLength()
@@ -28,8 +27,8 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public void SendData(string data)
         {
-            _stxCharacters = new List<byte>() { 0x02 };
-            _etxCharacters = new List<byte>() { 0x03 };
+            _stxCharacters = [ 0x02 ];
+            _etxCharacters = [ 0x03 ];
             SendData(data, Encoding.UTF8, 0).Wait(10000);
         }
     }

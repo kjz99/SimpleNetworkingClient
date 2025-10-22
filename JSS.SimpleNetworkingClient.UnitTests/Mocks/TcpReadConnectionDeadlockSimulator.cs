@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -32,7 +31,7 @@ namespace JSS.SimpleNetworkingClient
         /// <param name="ipStackBufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
         /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
         /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpReadConnectionDeadlockSimulator(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, IList<byte> stxCharacters = null, IList<byte> etxCharacters = null) : base(logger, sendReadTimeout, ipStackBufferSize)
+        public TcpReadConnectionDeadlockSimulator(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, byte[] stxCharacters = null, byte[] etxCharacters = null) : base(logger, sendReadTimeout, ipStackBufferSize)
         {
             _port = port;
             _stxCharacters = stxCharacters;
