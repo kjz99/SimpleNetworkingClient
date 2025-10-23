@@ -2,7 +2,7 @@
 The JSS SimpleNetworkingClient is designed for simple point to point tcp connections. For example it can be used to control a payment terminal from a cash register application, running on a POS device.<br/>
 It excels in its ease of use and straight forward functionality and alleviates you from the many problems that raw tcp communication presents.
 
-# For what is the SimpleNetworkingClient not designed?
+# For what scenarios is the SimpleNetworkingClient not designed?
 This client is not designed for multithreaded/high performance scenario's, where multiple clients connect to a single SimpleNetworkingClient.<br/>
 For that scenario, more in depth design and programming is required anyway, defeating the purpose of the SimpleNetworkingClient.
 
@@ -54,6 +54,8 @@ Tcp is a streaming protocol, meaning it will stream data from the source to the 
 If multiple messages are sent slowly enough, the remote party will see these as separate messages.
 But when multiple messages are sent fast enough, they will appear as a single concatenated message on the remote party's side.
 This means that messages need to be split up using start/end of transmission character, or a message length header.
+
+## 
 
 # Licenses
 ## JSS.SimpleNetworkingClient

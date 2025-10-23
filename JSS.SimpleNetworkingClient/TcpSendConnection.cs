@@ -13,28 +13,13 @@ namespace JSS.SimpleNetworkingClient;
 public class TcpSendConnection : TcpConnectionBase, IDisposable
 {
     private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
-    private readonly int _defaultBufferSize = 1024;
-    private readonly string _host;
-    private readonly int _port;
 
     /// <summary>
     /// Ctor; Establishes a new connection to the remote party for sending and or receiving data
     /// </summary>
-    /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
-    /// <param name="host">Hostname or ip address to connect to</param>
-    /// <param name="port">Port to use</param>
-    /// <param name="sendReadTimeout">Send/Read timeout when the connection is stale</param>
-    /// <param name="ipStackBufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
-    /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
-    /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
-    /// <param name="throwInsteadOfReconnect">Throws exception on a tcp error instead of trying to reinitialize the tcp listener</param>
-    public TcpSendConnection(ISimpleNetworkingClientLogger logger, string host, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, byte[] stxCharacters = default, byte[] etxCharacters = default, bool throwInsteadOfReconnect = false) : base(logger, sendReadTimeout, ipStackBufferSize)
+    /// <param name="settings">Settings for the tcp client</param>)
+    public TcpSendConnection(TcpClientSettings settings) : base(settings)
     {
-        _host = host;
-        _port = port;
-        _stxCharacters = stxCharacters;
-        _etxCharacters = etxCharacters;
-
         StartConnection();
     }
 
@@ -45,25 +30,25 @@ public class TcpSendConnection : TcpConnectionBase, IDisposable
     {
         try
         {
-            _tcpClient = new();
+            TcpClient = new();
 
             // Let the connection remain open for x seconds after calling Close() if data still needs to be transmitted
-            _tcpClient.Client.LingerState.Enabled = true;
-            _tcpClient.Client.LingerState.LingerTime = 2; // 2 seconds
+            TcpClient.Client.LingerState.Enabled = true;
+            TcpClient.Client.LingerState.LingerTime = 2; // 2 seconds
 
             // Connect and set the send/receive timeout
-            if (_tcpClient?.Client != default)
-                _tcpClient.Client.SendTimeout = _tcpClient.Client.ReceiveTimeout = (int) _sendReadTimeout.TotalMilliseconds;
+            if (TcpClient?.Client != default)
+                TcpClient.Client.SendTimeout = TcpClient.Client.ReceiveTimeout = (int) Settings.SendReadTimeout.TotalMilliseconds;
 
-            if (_tcpClient.ConnectAsync(_host, _port).Wait(_sendReadTimeout) == false)
+            if (TcpClient.ConnectAsync(Settings.Host, Settings.Port).Wait(Settings.SendReadTimeout) == false)
                 throw new TimeoutException();
             else
-                Logger?.Info($"{nameof(TcpSendConnection)} on port {_port} has been started successfully");
+                Settings.Logger?.Info($"{nameof(TcpSendConnection)} on port {Settings.Port} has been started successfully");
         }
         catch (Exception ex)
         {
             Dispose();
-            throw new NetworkingException($"Failed to connect to the remote party at '{_host}:{_port}'. Please check that the remote party is listening and the connection is not blocked by a virus scanner or firewall", NetworkingException.NetworkingExceptionTypeEnum.ConnectionSetupFailed, ex);
+            throw new NetworkingException($"Failed to connect to the remote party at '{Settings.Host}:{Settings.Port}'. Please check that the remote party is listening and the connection is not blocked by a virus scanner or firewall", NetworkingException.NetworkingExceptionTypeEnum.ConnectionSetupFailed, ex);
         }
     }
 
@@ -75,7 +60,7 @@ public class TcpSendConnection : TcpConnectionBase, IDisposable
     /// Data received from the remote party. If the stx/etx character has been set using the constructor, they will be removed from the begin/end of the received data string
     /// </returns>
     public string ReceiveDataAsString()
-        => ReadTcpDataAsString(_stxCharacters, _etxCharacters);
+        => ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
     
     /// <summary>
     /// Attempt to receive data on the send connection. 
@@ -85,5 +70,5 @@ public class TcpSendConnection : TcpConnectionBase, IDisposable
     /// Data received from the remote party. If the stx/etx character has been set using the constructor, they will be removed from the begin/end of the received data string.
     /// </returns>
     public byte[] ReceiveDataAsByteArray()
-        => ReadTcpData(_stxCharacters, _etxCharacters);
+        => ReadTcpData(Settings.StxCharacters, Settings.EtxCharacters);
 }

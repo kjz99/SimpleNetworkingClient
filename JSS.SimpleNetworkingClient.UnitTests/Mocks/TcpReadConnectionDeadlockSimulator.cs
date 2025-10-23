@@ -25,17 +25,9 @@ namespace JSS.SimpleNetworkingClient
         /// <summary>
         /// Ctor; Starts a new tcp listener 
         /// </summary>
-        /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
-        /// <param name="port">Port on which to listen for incoming connections</param>
-        /// <param name="sendReadTimeout">Send/Read timeout</param>
-        /// <param name="ipStackBufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
-        /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to null to disable to disable adding/removing stx characters.</param>
-        /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to null to disable end of transmission checking.</param>
-        public TcpReadConnectionDeadlockSimulator(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int ipStackBufferSize, byte[] stxCharacters = null, byte[] etxCharacters = null) : base(logger, sendReadTimeout, ipStackBufferSize)
+        /// <param name="settings">Settings for the tcp client</param>
+        public TcpReadConnectionDeadlockSimulator(TcpClientSettings settings) : base(settings)
         {
-            _port = port;
-            _stxCharacters = stxCharacters;
-            _etxCharacters = etxCharacters;
         }
 
         /// <summary>
@@ -60,7 +52,7 @@ namespace JSS.SimpleNetworkingClient
                     {
                         _cancellationTokenSource.Token.ThrowIfCancellationRequested();
 
-                        if (_pendingRequestActive && _tcpClient == null)
+                        if (_pendingRequestActive && TcpClient == null)
                             // tcp client has been disposed, indicating the last request has ended and the connection has been closed
                             _pendingRequestActive = false;
 
@@ -75,11 +67,11 @@ namespace JSS.SimpleNetworkingClient
                         {
                             // A new pending request has been detected, log it
                             _pendingRequestActive = true;
-                            Logger?.Warn($"A second pending request has been detected on port {_port}, which is not supported. The request will be ignored until the other request has ended");
+                            Settings.Logger?.Warn($"A second pending request has been detected on port {_port}, which is not supported. The request will be ignored until the other request has ended");
                             continue;
                         }
 
-                        Logger?.Verbose($"New pending connection has been received on port {_port}");
+                        Settings.Logger?.Verbose($"New pending connection has been received on port {_port}");
                         _tcpListener.BeginAcceptTcpClient(ar =>
                         {
                             try
@@ -92,7 +84,7 @@ namespace JSS.SimpleNetworkingClient
                             {
                                 // This exception case usually should not happen, even during tcp errors and frequently indicates a premature disposal of the tcp socket
                                 // The premature disposal can also be triggered by the OS if it force closes the connection due to an unhandled error
-                                Logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
+                                Settings.Logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
                                 DisposeCurrentTcpClient();
                             }
                         }, _tcpListener);
@@ -100,7 +92,7 @@ namespace JSS.SimpleNetworkingClient
                 }
                 catch (OperationCanceledException)
                 {
-                    Logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
+                    Settings.Logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
                     StopTcpListener();
                     return;
                 }
@@ -108,11 +100,11 @@ namespace JSS.SimpleNetworkingClient
                 {
                     if (ex.InnerException != null && ex.InnerException.GetType() == typeof(NetworkingException))
                     {
-                        Logger?.Error("Networking Exception has been received", ex.InnerException);
+                        Settings.Logger?.Error("Networking Exception has been received", ex.InnerException);
                     }
                     else
                     {
-                        Logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
+                        Settings.Logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
                         StopTcpListener();
                         await Task.Delay(TimeSpan.FromSeconds(10));
                     }
@@ -130,11 +122,11 @@ namespace JSS.SimpleNetworkingClient
         /// </summary>
         private void StartTcpListener()
         {
-            Logger?.Verbose($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
+            Settings.Logger?.Verbose($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
             _tcpListener?.Stop();
             _tcpListener = new TcpListener(IPAddress.Any, _port);
             _tcpListener.Start();
-            Logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {_port} has been started successfully");
+            Settings.Logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {_port} has been started successfully");
         }
 
         /// <summary>
@@ -144,15 +136,15 @@ namespace JSS.SimpleNetworkingClient
         {
             try
             {
-                Logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
+                Settings.Logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
                 DisposeCurrentTcpClient();
                 _tcpListener?.Stop();
                 _tcpListener = null;
-                Logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
+                Settings.Logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
             }
             catch (Exception ex)
             {
-                Logger?.Error($"Failed to stop {nameof(TcpListener)}", ex);
+                Settings.Logger?.Error($"Failed to stop {nameof(TcpListener)}", ex);
             }
         }
 
@@ -163,7 +155,7 @@ namespace JSS.SimpleNetworkingClient
 
             try
             {
-                _listenerTask.Wait(_sendReadTimeout);
+                _listenerTask.Wait(Settings.SendReadTimeout);
             }
             catch (TaskCanceledException)
             {
