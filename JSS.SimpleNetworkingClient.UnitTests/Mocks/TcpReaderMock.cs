@@ -21,7 +21,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
 
         public async Task<string> ReadTcpDataWithLength()
         {
-            return await base.ReadTcpDataWithLengthHeader([], []);
+            return await base.ReadTcpDataWithLengthHeaderAsString([], []);
         }
 
         public void SendData(string data)

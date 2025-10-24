@@ -363,7 +363,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         returnedData.Should().Be(testData[resultCounter]);
                         resultCounter++;
                         
-                        if (resultCounter == testData.Length - 1)
+                        if (resultCounter == testData.Length)
                             dataReceived.Set();
                     }
                     catch (Exception e)
@@ -383,10 +383,10 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(settings))
+                using var sendConnection = new TcpSendConnection(settings);
+                foreach (var dataToSend in testData)
                 {
-                    foreach (var dataToSend in testData)
-                        await sendConnection.SendData(dataToSend, Encoding.UTF8);
+                    await sendConnection.SendData(dataToSend, Encoding.UTF8);
                 }
             });
 

@@ -55,7 +55,7 @@ public class TcpClientSettings : ICloneable
 
     /// <summary>
     /// Nr of leading bytes that indicate the message length that will follow it.
-    /// Set to null to disable
+    /// Set to 0 to disable
     /// </summary>
     public short LeadingMessageLengthBytes { get; set; }
 

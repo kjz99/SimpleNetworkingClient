@@ -68,24 +68,26 @@ public abstract class TcpConnectionBase : IDisposable
         var bytesToRead = 0;
         var bytesRemaining = 0;
         var actualBytesRead = 0;
-        var totalBytesRead = 0;
+        var payloadBytesRead = 0;
 
         // Check how many bytes will be send by the remote party
         var lengthBuffer = new byte[Settings.LeadingMessageLengthBytes + stxCharacters.Length];
-        _ = stream.Read(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
-
+        var lengtBytesRead = stream.Read(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
+        if (lengtBytesRead != Settings.LeadingMessageLengthBytes)
+        
         // Check for the stx characters
         if (!lengthBuffer.AsSpan().StartsWith(stxCharacters.AsSpan()))
             throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
         
         // Check if the remote party is actually going to return any data
-        var dataStreamTotalLength = TcpLengthUtils.GetMessageLength(lengthBuffer, (short)Settings.LeadingMessageLengthBytes!, Settings.LittleEndian);
+        var dataStreamTotalLength = TcpLengthUtils.GetMessageLength(lengthBuffer.Skip(Settings.StxCharacters.Length).ToArray(), (short)Settings.LeadingMessageLengthBytes!, Settings.LittleEndian);
+        Settings.Logger?.Debug($"According to the length bytes at the start of the message {dataStreamTotalLength} bytes have been read");
         if (dataStreamTotalLength == 0)
             return [];
 
         // Determine if more bytes are available than the buffer size
         byte[] totalBuffer = new byte[dataStreamTotalLength];
-        bytesRemaining = dataStreamTotalLength;
+        bytesRemaining = dataStreamTotalLength - Settings.LeadingMessageLengthBytes - stxCharacters.Length;
         bytesToRead = bytesRemaining > Settings.IpStackBufferSize
             ? Settings.IpStackBufferSize
             : bytesRemaining
@@ -102,8 +104,8 @@ public abstract class TcpConnectionBase : IDisposable
             if (DateTime.Now > _timeoutTimer + Settings.SendReadTimeout)
                 throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
-            actualBytesRead = await stream.ReadAsync(totalBuffer, totalBytesRead, bytesToRead);
-            totalBytesRead += actualBytesRead;
+            actualBytesRead = await stream.ReadAsync(totalBuffer, payloadBytesRead, bytesToRead);
+            payloadBytesRead += actualBytesRead;
             
             // Check if we have actually read any bytes. If we read faster that the transmitting party, we could overtake it 
             if (actualBytesRead == 0)
@@ -113,7 +115,7 @@ public abstract class TcpConnectionBase : IDisposable
                 continue;
             }
             
-            Settings.Logger?.Verbose($"{totalBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
+            Settings.Logger?.Verbose($"{payloadBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
             bytesRemaining -= actualBytesRead;
 
             bytesToRead = bytesRemaining > Settings.IpStackBufferSize
@@ -123,17 +125,17 @@ public abstract class TcpConnectionBase : IDisposable
         }
 
         // Validate length reported with the actual length received
-        if (totalBytesRead != dataStreamTotalLength)
-            throw new NetworkingException($"The actual number of bytes received({totalBytesRead}) doesn't match the number of bytes({dataStreamTotalLength}) that should have been send by the remote party", NetworkingException.NetworkingExceptionTypeEnum.MoreOrLessDataReceived);
+        if (lengtBytesRead + payloadBytesRead != dataStreamTotalLength)
+            throw new NetworkingException($"The actual number of bytes received({payloadBytesRead}) doesn't match the number of bytes({dataStreamTotalLength}) that should have been send by the remote party", NetworkingException.NetworkingExceptionTypeEnum.MoreOrLessDataReceived);
 
         // Validate if the etx characters have been received
-        if (!totalBuffer.AsSpan().EndsWith(etxCharacters.AsSpan()))
+        if (!totalBuffer.AsSpan(payloadBytesRead - Settings.EtxCharacters.Length, Settings.EtxCharacters.Length).SequenceEqual(etxCharacters.AsSpan()))
             throw new NetworkingException($"Parameter {nameof(etxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' but these bytes have not been found at the end of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
             
-        Settings.Logger?.Verbose($"Total nr of {totalBytesRead} bytes have been read");
+        Settings.Logger?.Verbose($"Total nr of {payloadBytesRead} bytes have been read");
 
         // Remove the stx and etx characters from the total buffer and then return it
-        return totalBuffer.AsSpan(stxCharacters.Length, totalBytesRead - stxCharacters.Length - etxCharacters.Length).ToArray();
+        return totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray();
     }
 
     /// <summary>
@@ -279,8 +281,7 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="sendDelayMs">Delay per data chunk for sending that data in milliseconds. Do not use in production. Only useful in integration testing scenario's. Defaults to 0, meaning no delay</param>
     public async Task SendData(string dataToSend, Encoding encoding, int sendDelayMs = 0)
     {
-        //var bytesToSend = GetByteListNotNull(_stxCharacters).Concat(encoding.GetBytes(dataToSend)).Concat(GetByteListNotNull(_etxCharacters)).ToArray();
-        await SendData([..Settings.StxCharacters, ..encoding.GetBytes(dataToSend), ..Settings.EtxCharacters], sendDelayMs);
+        await SendData(encoding.GetBytes(dataToSend), sendDelayMs);
     }
 
     /// <summary>
@@ -303,18 +304,22 @@ public abstract class TcpConnectionBase : IDisposable
             Settings.Logger?.Verbose($"SendData: Client not initialized");
             return;
         }
+
+        byte[] dataToSendWithHeader = Settings.LeadingMessageLengthBytes > 0 
+            ? [..Settings.StxCharacters, ..TcpLengthUtils.CreateMessageLengthHeader([..Settings.StxCharacters, ..dataToSend, ..Settings.EtxCharacters], Settings.LeadingMessageLengthBytes, Settings.LittleEndian), ..dataToSend, ..Settings.EtxCharacters] 
+            : dataToSend;
         
-        while (nrOfBytesSend < dataToSend.Length)
+        while (nrOfBytesSend < dataToSendWithHeader.Length)
         {
             // Calculate initial send buffer size
-            var totalBytesStillToSend = dataToSend.Length - nrOfBytesSend;
+            var totalBytesStillToSend = dataToSendWithHeader.Length - nrOfBytesSend;
             var nrOfBytesToSend = totalBytesStillToSend > Settings.IpStackBufferSize ? Settings.IpStackBufferSize : totalBytesStillToSend;
 
             // Check for a timeout
             if (DateTime.Now > startTime + Settings.SendReadTimeout)
                 throw new NetworkingException($"Timeout in sending data. Timeout is {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
-            // Delay sending of the data.
+            // Delay sending of the data if desirable.
             if (sendDelayMs > 0)
                 await Task.Delay(sendDelayMs);
 
@@ -323,7 +328,7 @@ public abstract class TcpConnectionBase : IDisposable
                 throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
             // Select the chunck of data to be send without copying the array and send the data
-            var sendOperation = TcpClient.Client.BeginSend(dataToSend, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, TcpClient.Client);
+            var sendOperation = TcpClient.Client.BeginSend(dataToSendWithHeader, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, TcpClient.Client);
             nrOfBytesSend += await Task.Factory.FromAsync(sendOperation, result => TcpClient.Client.EndSend(result));
             Settings.Logger?.Verbose($"{nrOfBytesSend} bytes have been send in total");
         }

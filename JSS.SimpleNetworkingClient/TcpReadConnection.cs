@@ -1,6 +1,7 @@
 ﻿using JSS.SimpleNetworkingClient.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -94,7 +95,19 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                 else if (pollResult && TcpClient.Client.Available > 0)
                                 {
                                     // Data is available
-                                    var receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
+                                    string receivedData = "";
+                                    if (Settings.LeadingMessageLengthBytes > 0)
+                                    {
+                                        // TcpReadConnection has been configured to expect a length header before the actual data
+                                        var readTcpDataResultString = ReadTcpDataWithLengthHeaderAsString(Settings.StxCharacters, Settings.EtxCharacters);
+                                        if (readTcpDataResultString.Wait(Settings.SendReadTimeout))
+                                            receivedData = readTcpDataResultString.Result;
+                                        else
+                                            throw new NetworkingException($"{nameof(ReadTcpDataWithLengthHeaderAsString)} timed out trying to attempt to read data", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+                                    }
+                                    else
+                                        receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
+                                    
                                     Settings.Logger?.Verbose($"Tcp Listener on port '{Settings.Port}' received the following data: {receivedData}");
                                     OnDataReceived?.Invoke(receivedData);
                                     if (OnDataReceived == default)

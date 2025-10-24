@@ -12,8 +12,8 @@ public static class TcpLengthUtils
 
         var messageLengthBytes = message.AsSpan().Slice(0, nrOfLeadingBytes);
         
-        // Reverse the bytes if the arch is big endian
-        if (!littleEndian)
+        // Reverse the bytes if the arch is little endian
+        if (littleEndian)
             messageLengthBytes.Reverse();
 
         return BitConverter.ToInt32(messageLengthBytes);
@@ -21,10 +21,10 @@ public static class TcpLengthUtils
 
     public static byte[] CreateMessageLengthHeader(byte[] message, short nrOfLeadingBytes, bool littleEndian = false)
     {
-        var lengthBytes = BitConverter.GetBytes(message.Length).AsSpan(0, nrOfLeadingBytes);
+        var lengthBytes = BitConverter.GetBytes(message.Length + nrOfLeadingBytes).AsSpan(0, nrOfLeadingBytes);
 
-        // Reverse the bytes if the arch is big endian
-        if (!littleEndian)
+        // Reverse the bytes if the arch is little endian
+        if (littleEndian)
             lengthBytes.Reverse();
 
         return lengthBytes.ToArray();
