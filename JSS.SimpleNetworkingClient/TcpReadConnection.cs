@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -21,6 +22,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     private Task _listenerTask;
     private CancellationTokenSource _cancellationTokenSource;
     private TcpListener _tcpListener;
+    private AutoResetEvent _startListeningCompletedEvent;
 
     /// <summary>
     /// Ctor; Starts a new tcp listener 
@@ -37,7 +39,9 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     public void StartListening()
     {
         _cancellationTokenSource = new CancellationTokenSource();
+        _startListeningCompletedEvent = new AutoResetEvent(false);
         _listenerTask = Task.Run(async () => await ConnectionListenerImpl(), _cancellationTokenSource.Token);
+        _startListeningCompletedEvent.WaitOne(Settings.SendReadTimeout);
     }
 
     private async Task ConnectionListenerImpl()
@@ -86,13 +90,19 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                 if (_cancellationTokenSource.IsCancellationRequested)
                                     return;
 
-                                if (pollResult && TcpClient.Client.Available == 0)
+                                if (MessageBuffer.Any())
+                                {
+                                    // Buffer still contains messages, process them
+                                    var receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
+                                    TryExecuteOnDataReceived(receivedData);
+                                }
+                                else if (pollResult && TcpClient.Client.Available == 0)
                                 {
                                     // Connection has been closed by the remote party
                                     DisposeCurrentTcpClient();
                                     break;
                                 }
-                                else if (pollResult && TcpClient.Client.Available > 0)
+                                else if (pollResult && (MessageBuffer.Any() || TcpClient.Client.Available > 0))
                                 {
                                     // Data is available
                                     string receivedData = "";
@@ -107,11 +117,8 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                     }
                                     else
                                         receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
-                                    
-                                    Settings.Logger?.Verbose($"Tcp Listener on port '{Settings.Port}' received the following data: {receivedData}");
-                                    OnDataReceived?.Invoke(receivedData);
-                                    if (OnDataReceived == default)
-                                        Settings.Logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
+
+                                    TryExecuteOnDataReceived(receivedData);
                                 }
                                 else
                                 {
@@ -160,6 +167,14 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                 }
             }
         }
+
+        void TryExecuteOnDataReceived(string receivedData)
+        {
+            Settings.Logger?.Verbose($"Tcp Listener on port '{Settings.Port}' received the following data: {receivedData}");
+            OnDataReceived?.Invoke(receivedData);
+            if (OnDataReceived == default)
+                Settings.Logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
+        }
     }
 
     /// <summary>
@@ -177,6 +192,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
         _tcpListener = new TcpListener(IPAddress.Any, Settings.Port);
         _tcpListener.Start();
         Settings.Logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {Settings.Port} has been started successfully");
+        _startListeningCompletedEvent.Set();
     }
 
     /// <summary>

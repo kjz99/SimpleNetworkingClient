@@ -15,12 +15,12 @@ public abstract class TcpConnectionBase : IDisposable
 {
     private readonly int _pollWriteTimeout = (int)TimeSpan.FromSeconds(5).TotalMilliseconds * 1000;
     private DateTime _timeoutTimer;
-    private readonly Queue<byte[]> _messageBuffer;
     private readonly int _sendReadTimeoutMicroseconds;
     private readonly byte[] _singleMessageBuffer;
     private readonly byte[] _loopBuffer;
     private int _totalBytesRead;
 
+    protected readonly Queue<byte[]> MessageBuffer;
     protected readonly TcpClientSettings Settings;
     protected TcpClient TcpClient;
     
@@ -39,7 +39,7 @@ public abstract class TcpConnectionBase : IDisposable
         Settings = settings;
         Settings.VerifySettings();
 
-        _messageBuffer = new Queue<byte[]>(messageQueueSize);
+        MessageBuffer = new Queue<byte[]>(messageQueueSize);
         _sendReadTimeoutMicroseconds = (int)Settings.SendReadTimeout.TotalMilliseconds * 1000;
 
         if (Settings.SendReadTimeout == default || Settings.SendReadTimeout <= TimeSpan.Zero)
@@ -160,8 +160,8 @@ public abstract class TcpConnectionBase : IDisposable
     protected byte[] ReadTcpData(byte[] stxCharacters, byte[] etxCharacters)
     {
         // If there are any messages in the queue from the last time this method was called, return the first message in the queue
-        if (_messageBuffer.Any())
-            return _messageBuffer.Dequeue();
+        if (MessageBuffer.Any())
+            return MessageBuffer.Dequeue();
         
         var stream = TcpClient.GetStream();
         _timeoutTimer = DateTime.Now;
@@ -208,7 +208,7 @@ public abstract class TcpConnectionBase : IDisposable
                 {
                     // Enqueue message for later processing without stx and etx characters
                     Settings.Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Pushing message to queue. Message: {BitConverter.ToString([.. singleMessageBufferSpan[.. etxCharactersIndex]], 0, etxCharactersIndex)}");
-                    _messageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length .. etxCharactersIndex].ToArray());
+                    MessageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length .. etxCharactersIndex].ToArray());
 
                     // Move remaining bytes to the start of the buffer.
                     Array.Copy(_singleMessageBuffer, etxCharactersIndex + 1, _singleMessageBuffer, 0, _singleMessageBuffer.Length - etxCharactersIndex - 1);
@@ -225,8 +225,8 @@ public abstract class TcpConnectionBase : IDisposable
                 }
             }
             
-            if (_messageBuffer.Any())
-                return _messageBuffer.Dequeue();
+            if (MessageBuffer.Any())
+                return MessageBuffer.Dequeue();
         }
         
         return [];
@@ -307,7 +307,7 @@ public abstract class TcpConnectionBase : IDisposable
 
         byte[] dataToSendWithHeader = Settings.LeadingMessageLengthBytes > 0 
             ? [..Settings.StxCharacters, ..TcpLengthUtils.CreateMessageLengthHeader([..Settings.StxCharacters, ..dataToSend, ..Settings.EtxCharacters], Settings.LeadingMessageLengthBytes, Settings.LittleEndian), ..dataToSend, ..Settings.EtxCharacters] 
-            : dataToSend;
+            : [..Settings.StxCharacters, ..dataToSend, ..Settings.EtxCharacters];
         
         while (nrOfBytesSend < dataToSendWithHeader.Length)
         {

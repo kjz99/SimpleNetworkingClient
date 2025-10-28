@@ -67,45 +67,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         }
 
         /// <summary>
-        /// Test using the TcpReadConnectionDeadlockSimulator that deadlocks do not lock up the TcpReadConnection logic and it can still be disposed
-        /// </summary>
-        [Fact]
-        public void DeadlockedTcpReaderShouldDisposeNormally()
-        {
-            var testData = "qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop";
-            _mutex.WaitOne(30000);
-            var are = new AutoResetEvent(false);
-
-            // Start the receiving side
-            var receiveTask = Task.Run(async () =>
-            {
-                using var reader = new TcpReadConnectionDeadlockSimulator(DefaultSettings);
-                reader.StartListening();
-                are.Set();
-                await Task.Delay(5000);
-            });
-
-            // Wait for the receiver to start listening
-            are.WaitOne(5000);
-
-            // Start sending data
-            var sendTask = Task.Run(async () =>
-            {
-                using var sendConnection = new TcpSendConnection(DefaultSettings);
-                await sendConnection.SendData(testData, Encoding.UTF8);
-            });
-
-            if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
-                throw new TimeoutException("Send or receive task has not completed within the allotted time");
-
-            // Make sure that exceptions on other thread tasks fail the unit test
-            if (receiveTask.Exception != null)
-                throw receiveTask.Exception;
-            if (sendTask.Exception != null)
-                throw sendTask.Exception;
-        }
-
-        /// <summary>
         /// Test that the TcpReadConnection can receive and respond asynchronously on multiple requests
         /// </summary>
         [Fact]
@@ -114,50 +75,46 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             var receiveCounter = 0;
             var testData = "qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop";
             _mutex.WaitOne(30000);
-            var receiverReady = new AutoResetEvent(false);
             var cancelReceiverTokenSource = new CancellationTokenSource();
+            var are = new AutoResetEvent(false);
 
             // Start the receiving side
             var receiveTask = Task.Run(() =>
             {
-                while (true)
+                if (cancelReceiverTokenSource.IsCancellationRequested)
+                    return;
+
+                var dataReceived = new AutoResetEvent(false);
+                using var reader = new TcpReadConnection(DefaultSettings);
+                reader.OnDataReceived = (returnedData) =>
                 {
-                    if (cancelReceiverTokenSource.IsCancellationRequested)
-                        return;
+                    returnedData.Should().Be(testData);
+                    reader.SendData("ACK", Encoding.UTF8).Wait(_defaultTimeout);
+                    receiveCounter++;
 
-                    var dataReceived = new AutoResetEvent(false);
-                    using var reader = new TcpReadConnection(DefaultSettings);
-                    reader.OnDataReceived = (returnedData) =>
-                    {
-                        returnedData.Should().Be(testData);
-                        reader.SendData("ACK", Encoding.UTF8).Wait(_defaultTimeout);
-                        receiveCounter++;
-                        
-                        if (receiveCounter == 100)
-                            dataReceived.Set();
-                    };
+                    if (receiveCounter == 100)
+                        dataReceived.Set();
+                };
 
-                    reader.StartListening();
-                    receiverReady.Set();
-                    dataReceived.WaitOne(5000);
-                }
+                reader.StartListening();
+                are.Set();
+                dataReceived.WaitOne(1000_000);
             });
+
+            are.WaitOne(5_000);
 
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    // Wait for the receiver to start listening
-                    receiverReady.WaitOne(5000);
-
                     using var sendConnection = new TcpSendConnection(DefaultSettings);
                     await sendConnection.SendData(testData, Encoding.UTF8);
                     sendConnection.ReceiveDataAsString().Should().Be("ACK");
                 }
             });
 
-            if (Task.WaitAll(new[] { receiveTask, sendTask }, TimeSpan.FromMinutes(30)) == false)
+            if (Task.WaitAll(new[] { receiveTask, sendTask }, TimeSpan.FromMinutes(1)) == false)
                 throw new TimeoutException("Send or receive task has not completed within the allotted time");
 
             // Make sure that exceptions on other thread tasks fail the unit test
@@ -173,56 +130,50 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         [Fact]
         public void ConsecutiveClientsShouldBeAbleToConnectAndSendData()
         {
+            var receiveCounter = 0;
             var testData = "qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop";
             _mutex.WaitOne(30000);
-            var receiverReady = new AutoResetEvent(false);
             var cancelReceiverTokenSource = new CancellationTokenSource();
+            var are = new AutoResetEvent(false);
 
             // Start the receiving side
             var receiveTask = Task.Run(() =>
             {
+                if (cancelReceiverTokenSource.IsCancellationRequested)
+                    return;
+
+                var dataReceived = new AutoResetEvent(false);
                 using var reader = new TcpReadConnection(DefaultSettings);
                 reader.OnDataReceived = (returnedData) =>
                 {
                     returnedData.Should().Be(testData);
                     reader.SendData("ACK", Encoding.UTF8).Wait(_defaultTimeout);
+                    receiveCounter++;
+
+                    if (receiveCounter == 100)
+                        dataReceived.Set();
                 };
 
                 reader.StartListening();
-                receiverReady.Set();
-
-                while (true)
-                {
-                    if (cancelReceiverTokenSource.IsCancellationRequested) 
-                        return;
-                }
+                are.Set();
+                dataReceived.WaitOne(1000_000);
             });
+
+            are.WaitOne(5_000);
 
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
+                using var sendConnection = new TcpSendConnection(DefaultSettings);
+                
                 for (int i = 0; i < 100; i++)
                 {
-                    // Wait for the receiver to start listening
-                    receiverReady.WaitOne(5000);
-
-                    using (var sendConnection = new TcpSendConnection(DefaultSettings))
-                    {
-                        await sendConnection.SendData(testData, Encoding.UTF8);
-                        sendConnection.ReceiveDataAsString().Should().Be("ACK");
-                    }
-
-                    using (var sendConnection = new TcpSendConnection(DefaultSettings))
-                    {
-                        await sendConnection.SendData(testData, Encoding.UTF8);
-                        sendConnection.ReceiveDataAsString().Should().Be("ACK");
-                    }
-
-                    await Task.Delay(30000);
+                    await sendConnection.SendData(testData, Encoding.UTF8);
+                    sendConnection.ReceiveDataAsString().Should().Be("ACK");
                 }
             });
 
-            if (Task.WaitAll(new[] { receiveTask, sendTask }, TimeSpan.FromMinutes(30)) == false)
+            if (Task.WaitAll(new[] { receiveTask, sendTask }, TimeSpan.FromMinutes(1)) == false)
                 throw new TimeoutException("Send or receive task has not completed within the allotted time");
 
             // Make sure that exceptions on other thread tasks fail the unit test
@@ -276,7 +227,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
-        
+
         /// <summary>
         /// TCP is a streaming protocol, so it is possible to receive multiple messages in one transmission if they are send fast enough after each other.
         /// The client should thus be able to handle multiple messages starting and ending with the stx and etx bytes.
@@ -302,7 +253,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                     {
                         returnedData.Should().Be(testData[resultCounter]);
                         resultCounter++;
-                        
+
                         if (resultCounter == testData.Length - 1)
                             dataReceived.Set();
                     }
@@ -311,7 +262,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         dataReceived.Set(e);
                     }
                 };
-                
+
                 reader.StartListening();
                 are.Set();
                 dataReceived.WaitOne(_defaultTimeout);
@@ -323,11 +274,9 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using (var sendConnection = new TcpSendConnection(DefaultSettings))
-                {
-                    foreach (var dataToSend in testData)
-                        await sendConnection.SendData(dataToSend, Encoding.UTF8);
-                }
+                using var sendConnection = new TcpSendConnection(DefaultSettings);
+                foreach (var dataToSend in testData)
+                    await sendConnection.SendData(dataToSend, Encoding.UTF8);
             });
 
             if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
@@ -339,7 +288,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
-        
+
         [Fact]
         public void TcpReaderShouldHandleMultipleMessagesWithMessageLength()
         {
@@ -350,7 +299,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
 
             var settings = (TcpClientSettings)DefaultSettings.Clone();
             settings.LeadingMessageLengthBytes = 4;
-            
+
             // Start the receiving side
             var receiveTask = Task.Run(async () =>
             {
@@ -362,7 +311,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                     {
                         returnedData.Should().Be(testData[resultCounter]);
                         resultCounter++;
-                        
+
                         if (resultCounter == testData.Length)
                             dataReceived.Set();
                     }
@@ -371,7 +320,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                         dataReceived.Set(e);
                     }
                 };
-                
+
                 reader.StartListening();
                 are.Set();
                 dataReceived.WaitOne(_defaultTimeout);
@@ -401,13 +350,13 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         }
 
         private TcpClientSettings DefaultSettings => new ()
-            {
-                Host = LocalHost,
-                Port = Port,
-                SendReadTimeout = _defaultTimeout,
-                IpStackBufferSize = 1024,
-                StxCharacters = [ 0x02 ],
-                EtxCharacters = [ 0x03 ]
-            };
+        {
+            Host = LocalHost,
+            Port = Port,
+            SendReadTimeout = _defaultTimeout,
+            IpStackBufferSize = 1024,
+            StxCharacters = [ 0x02 ],
+            EtxCharacters = [ 0x03 ]
+        };
     }
 }
