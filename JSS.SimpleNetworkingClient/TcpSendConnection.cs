@@ -1,6 +1,4 @@
-﻿using JSS.SimpleNetworkingClient.Interfaces;
-using System;
-using System.Collections.Generic;
+﻿using System;
 
 namespace JSS.SimpleNetworkingClient;
 

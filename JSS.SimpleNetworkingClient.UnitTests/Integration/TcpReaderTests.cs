@@ -1,12 +1,11 @@
-﻿using FluentAssertions;
-using JSS.SimpleNetworkingClient.Extensions;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Xunit;
+using FluentAssertions;
+using JSS.SimpleNetworkingClient.Extensions;
 using JSS.SimpleNetworkingClient.Utils;
+using Xunit;
 
 namespace JSS.SimpleNetworkingClient.UnitTests.Integration
 {
@@ -15,7 +14,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         private const string LocalHost = "127.0.0.1";
         private const int Port = 514;
         private TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
-        private Mutex _mutex = new Mutex(false, nameof(TcpReaderTests));
 
         /// <summary>
         /// Test that the TcpReadConnection can receive and respond asynchronously
@@ -25,7 +23,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         [InlineData("qwertyuiop")]
         public void SimpleAsyncReadShouldSucceed(string testData)
         {
-            _mutex.WaitOne(30000);
             var are = new AutoResetEvent(false);
 
             // Start the receiving side
@@ -74,7 +71,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         {
             var receiveCounter = 0;
             var testData = "qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop";
-            _mutex.WaitOne(30000);
             var cancelReceiverTokenSource = new CancellationTokenSource();
             var are = new AutoResetEvent(false);
 
@@ -132,7 +128,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         {
             var receiveCounter = 0;
             var testData = "qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop";
-            _mutex.WaitOne(30000);
             var cancelReceiverTokenSource = new CancellationTokenSource();
             var are = new AutoResetEvent(false);
 
@@ -193,7 +188,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         [InlineData("qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop")]
         public void TestReadConnection(string testData)
         {
-            _mutex.WaitOne(30000);
             var are = new AutoResetEvent(false);
 
             // Start the receiving side
@@ -237,7 +231,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         [Fact]
         public void TcpReaderShouldHandleMultipleMessagesInOneTransmission()
         {
-            _mutex.WaitOne(30000);
             var are = new AutoResetEvent(false);
             var resultCounter = 0;
             string[] testData = [ "qwertyuiop", "asdfghjkl", "zxcvbnm,./", "qwertyuiop", "asdfghjkl", "zxcvbnm,./" ];
@@ -292,7 +285,6 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         [Fact]
         public void TcpReaderShouldHandleMultipleMessagesWithMessageLength()
         {
-            _mutex.WaitOne(30000);
             var are = new AutoResetEvent(false);
             var resultCounter = 0;
             string[] testData = [ "qwertyuiop", "asdfghjkl", "zxcvbnm,./", "qwertyuiop", "asdfghjkl", "zxcvbnm,./" ];

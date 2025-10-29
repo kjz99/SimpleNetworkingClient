@@ -1,12 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Reflection;
 using JSS.SimpleNetworkingClient.Interfaces;
 using log4net;
-using log4net.Config;
 using log4net.Core;
-using log4net.Repository;
 using log4net.Util;
 
 namespace JSS.SimpleNetworkingClient.Logging.Log4net
@@ -41,7 +38,7 @@ namespace JSS.SimpleNetworkingClient.Logging.Log4net
 
         public void Verbose(string message)
         {
-            _logger.Logger.Log(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType, Level.Verbose, message, null);
+            _logger.Logger.Log(MethodBase.GetCurrentMethod().DeclaringType, Level.Verbose, message, null);
         }
 
         public void Info(string message)
