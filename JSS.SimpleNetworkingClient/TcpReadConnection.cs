@@ -31,7 +31,8 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     }
 
     /// <summary>
-    /// Start listening for new incoming connections
+    /// Start listening for new incoming connections.
+    /// Will block until the listening socket has been started successfully or an exception has been thrown.
     /// </summary>
     public void StartListening()
     {
@@ -87,11 +88,17 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                 if (_cancellationTokenSource.IsCancellationRequested)
                                     return;
 
+                                // Theory of operation
+                                // ReadTcpDataAsString will try to read one message and put it in the MessageBuffer
+                                // Normally the message buffer will contain one message, but if multiple messages are received in one read, they will all be added to the MessageBuffer
+                                // If there are still messages from the previous read, they will be returned when calling ReadTcpDataAsString
+                                // When a leading length header has been send, we don't have to buffer messages and can just read to the end of the message based on the length header
+                                // So ReadTcpDataWithLengthHeaderAsString will just read until the end of the message
+                                
                                 if (MessageBuffer.Any())
                                 {
                                     // Buffer still contains messages, process them
-                                    var receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
-                                    TryExecuteOnDataReceived(receivedData);
+                                    TryDataReceiveAndOnExecute();
                                 }
                                 else if (pollResult && TcpClient.Client.Available == 0)
                                 {
@@ -101,21 +108,8 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                 }
                                 else if (pollResult && (MessageBuffer.Any() || TcpClient.Client.Available > 0))
                                 {
-                                    // Data is available
-                                    string receivedData = "";
-                                    if (Settings.LeadingMessageLengthBytes > 0)
-                                    {
-                                        // TcpReadConnection has been configured to expect a length header before the actual data
-                                        var readTcpDataResultString = ReadTcpDataWithLengthHeaderAsString(Settings.StxCharacters, Settings.EtxCharacters);
-                                        if (readTcpDataResultString.Wait(Settings.SendReadTimeout))
-                                            receivedData = readTcpDataResultString.Result;
-                                        else
-                                            throw new NetworkingException($"{nameof(ReadTcpDataWithLengthHeaderAsString)} timed out trying to attempt to read data", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
-                                    }
-                                    else
-                                        receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
-
-                                    TryExecuteOnDataReceived(receivedData);
+                                    // New data is available
+                                    TryDataReceiveAndOnExecute();
                                 }
                                 else
                                 {
@@ -165,8 +159,10 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
             }
         }
 
-        void TryExecuteOnDataReceived(string receivedData)
+        void TryDataReceiveAndOnExecute()
         {
+            string receivedData = TryReadTcpDataAsStringOrReadTcpDataWithLengthHeaderAsString();
+            
             Settings.Logger?.Verbose($"Tcp Listener on port '{Settings.Port}' received the following data: {receivedData}");
             OnDataReceived?.Invoke(receivedData);
             if (OnDataReceived == default)

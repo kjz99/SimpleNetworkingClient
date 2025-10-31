@@ -72,7 +72,7 @@ public abstract class TcpConnectionBase : IDisposable
 
         // Check how many bytes will be send by the remote party
         var lengthBuffer = new byte[Settings.LeadingMessageLengthBytes + stxCharacters.Length];
-        var lengtBytesRead = stream.Read(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
+        var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
         if (lengtBytesRead != Settings.LeadingMessageLengthBytes)
         
         // Check for the stx characters
@@ -96,11 +96,11 @@ public abstract class TcpConnectionBase : IDisposable
         // Read all the data in IpStackBufferSize chunks until all the data has been read
         while (bytesRemaining > 0)
         {
-            // Detect if the connection has been closed, reset or terminated
+            // Detect if the connection has been closed, reset or terminated. Stays true on Windows even after the remote party disconnected.
             if (TcpClient.Connected == false)
                 throw new NetworkingException($"Networking socket has been closed by the remote party", NetworkingException.NetworkingExceptionTypeEnum.ConnectionAbortedPrematurely);
 
-            // Check if the read has timed out. The TcpClient has a mechanism for this but it is not relyable
+            // Check if the read has timed out. The TcpClient has a mechanism for this but it is not reliable
             if (DateTime.Now > _timeoutTimer + Settings.SendReadTimeout)
                 throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
@@ -270,6 +270,29 @@ public abstract class TcpConnectionBase : IDisposable
         }
 
         return Encoding.UTF8.GetString([.. totalBuffer], 0, totalBytesRead);
+    }
+
+    /// <summary>
+    /// Based on the settings of the TcpConnectionBase, this method will either read the data with or without a length header.
+    /// </summary>
+    /// <returns>Received data</returns>
+    /// <exception cref="NetworkingException">Timeout while reading data</exception>
+    public string TryReadTcpDataAsStringOrReadTcpDataWithLengthHeaderAsString()
+    {
+        string receivedData = "";
+        if (Settings.LeadingMessageLengthBytes > 0)
+        {
+            // TcpReadConnection has been configured to expect a length header before the actual data
+            var readTcpDataResultString = ReadTcpDataWithLengthHeaderAsString(Settings.StxCharacters, Settings.EtxCharacters);
+            if (readTcpDataResultString.Wait(Settings.SendReadTimeout))
+                receivedData = readTcpDataResultString.Result;
+            else
+                throw new NetworkingException($"{nameof(ReadTcpDataWithLengthHeaderAsString)} timed out trying to attempt to read data", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+        }
+        else
+            receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
+        
+        return receivedData;
     }
 
     /// <summary>
