@@ -9,6 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Artifacts", "Artifacts", "{
 	ProjectSection(SolutionItems) = preProject
 		License.md = License.md
 		Readme.md = Readme.md
+		Releasenotes.md = Releasenotes.md
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "JSS.SimpleNetworkingClient.UnitTests", "JSS.SimpleNetworkingClient.UnitTests\JSS.SimpleNetworkingClient.UnitTests.csproj", "{4D12E8F9-DCFB-4F12-B10F-A03A909D9E06}"
