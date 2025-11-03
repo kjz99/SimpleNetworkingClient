@@ -154,8 +154,7 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>byte array with the data</returns>
     /// <remarks>
-    /// I dont use a seperate thread for reading the data because this could cause a buffer overflow if the application that calls this method is too slow.
-    /// 
+    /// I don't use a seperate thread for reading the data because this could cause a buffer overflow if the application that calls this method is too slow
     /// </remarks>
     protected byte[] ReadTcpData(byte[] stxCharacters, byte[] etxCharacters)
     {
