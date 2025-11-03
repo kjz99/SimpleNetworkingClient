@@ -1,6 +1,6 @@
-﻿using JSS.SimpleNetworkingClient.Interfaces;
+﻿using System;
+using JSS.SimpleNetworkingClient.Interfaces;
 using Serilog;
-using System;
 
 namespace JSS.SimpleNetworkingClient.Logging.Serilog;
 

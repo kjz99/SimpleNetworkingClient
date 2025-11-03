@@ -55,6 +55,10 @@ public class NetworkingException : Exception
         /// <summary>
         /// Timeout waiting for the socket to become ready for writing any data
         /// </summary>
-        WriteTimeout
+        WriteTimeout,
+        /// <summary>
+        /// Internal byte buffer has overflowed
+        /// </summary>
+        BufferOverflow
     }
 }

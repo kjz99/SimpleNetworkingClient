@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -8,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using JSS.SimpleNetworkingClient.UnitTests.Mocks;
+using JSS.SimpleNetworkingClient.Utils;
 using Xunit;
 
 namespace JSS.SimpleNetworkingClient.UnitTests.Integration
@@ -41,7 +40,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync(), DefaultSettings);
                         var returnedData = await mock.ReadTcpDataWithLength();
                         returnedData.Should().Be(testData);
                         receiverClient.Stop();
@@ -62,7 +61,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 TcpClient senderClient = new TcpClient(LocalHost, Port);
                 byte[] data = Encoding.UTF8.GetBytes(testData);
-                byte[] buffer = ((byte[]) new TcpLengthStruct(testData.Length)).Concat(data).ToArray();
+                byte[] buffer = [..TcpLengthUtils.CreateMessageLengthHeader(data, 4), ..data];
                 var sendStream = senderClient.GetStream();
                 sendStream.Write(buffer, 0, buffer.Length);
                 sendStream.Flush();
@@ -77,5 +76,16 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
+        
+        private TcpClientSettings DefaultSettings => new ()
+        {
+            Host = LocalHost,
+            Port = Port,
+            LeadingMessageLengthBytes = 4,
+            SendReadTimeout = TimeSpan.FromSeconds(30),
+            IpStackBufferSize = 1024,
+            StxCharacters = [ 0x02 ],
+            EtxCharacters = [ 0x03 ]
+        };
     }
 }

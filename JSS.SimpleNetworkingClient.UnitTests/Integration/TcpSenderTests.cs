@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -38,7 +37,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                     if (receiverClient.Pending())
                     {
                         // We have a new pending request. Validate the received data, send a response and close the connection
-                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync(), DefaultSettings);
                         var returnedData = mock.ReadTcpData();
                         returnedData.Should().Be(testData);
                         mock.SendData("ACK");
@@ -59,7 +58,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             // Start sending data
             var sendTask = Task.Run(async () =>
             {
-                using var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+                using var sendConnection = new TcpSendConnection(DefaultSettings);
                 await sendConnection.SendData(testData, Encoding.UTF8);
                 sendConnection.ReceiveDataAsString().Should().Be("ACK");
             });
@@ -93,7 +92,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
                 {
                     if (receiverClient.Pending())
                     {
-                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync());
+                        using var mock = new TcpReaderMock(await receiverClient.AcceptTcpClientAsync(), DefaultSettings);
                         var returnedData = mock.ReadTcpData();
                         returnedData.Should().Be(testData);
                         senderSemaphore.Release();
@@ -116,7 +115,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 for (int i = 0; i < 1000; i++)
                 {
-                    using (var sendConnection = new TcpSendConnection(null, LocalHost, Port, TimeSpan.FromSeconds(30), 10, new List<byte>() { 0x02 }, new List<byte>() { 0x03 }))
+                    using (var sendConnection = new TcpSendConnection(DefaultSettings))
                     {
                         await sendConnection.SendData(testData, Encoding.UTF8);
                     }
@@ -136,5 +135,15 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
+        
+        private TcpClientSettings DefaultSettings => new ()
+        {
+            Host = LocalHost,
+            Port = Port,
+            SendReadTimeout = TimeSpan.FromSeconds(30),
+            IpStackBufferSize = 1024,
+            StxCharacters = [ 0x02 ],
+            EtxCharacters = [ 0x03 ]
+        };
     }
 }

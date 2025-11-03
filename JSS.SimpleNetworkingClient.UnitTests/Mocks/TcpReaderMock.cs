@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Sockets;
+﻿using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -11,25 +9,23 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Mocks
     /// </summary>
     public class TcpReaderMock : TcpConnectionBase
     {
-        public TcpReaderMock(TcpClient client) : base(null, TimeSpan.FromSeconds(5), 16)
+        public TcpReaderMock(TcpClient client, TcpClientSettings settings) : base(settings)
         {
-            _tcpClient = client;
+            TcpClient = client;
         }
 
         public string ReadTcpData()
         {
-            return base.ReadTcpDataAsString(new List<byte>() { 0x02 }, new List<byte>() { 0x03 });
+            return base.ReadTcpDataAsString([ 0x02 ], [ 0x03 ]);
         }
 
         public async Task<string> ReadTcpDataWithLength()
         {
-            return await base.ReadTcpDataWithLengthHeader();
+            return await base.ReadTcpDataWithLengthHeaderAsString([], []);
         }
 
         public void SendData(string data)
         {
-            _stxCharacters = new List<byte>() { 0x02 };
-            _etxCharacters = new List<byte>() { 0x03 };
             SendData(data, Encoding.UTF8, 0).Wait(10000);
         }
     }

@@ -1,6 +1,5 @@
-﻿using JSS.SimpleNetworkingClient.Interfaces;
-using System;
-using System.Collections.Generic;
+﻿using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -16,39 +15,31 @@ namespace JSS.SimpleNetworkingClient;
 /// <see cref="https://github.com/kjz99/SimpleNetworkingClient" />
 public class TcpReadConnection : TcpConnectionBase, IDisposable
 {
-    private readonly int _defaultBufferSize = 1024;
-    private readonly int _port;
-    private readonly bool _throwInsteadOfReconnect;
     private bool _pendingRequestActive = false;
     private Task _listenerTask;
     private CancellationTokenSource _cancellationTokenSource;
     private TcpListener _tcpListener;
+    private AutoResetEvent _startListeningCompletedEvent;
 
     /// <summary>
     /// Ctor; Starts a new tcp listener 
     /// </summary>
-    /// <param name="logger">Logger instance that implements ISimpleNetworkingClientLogger for diagnostic logging</param>
-    /// <param name="port">Port on which to listen for incoming connections</param>
-    /// <param name="sendReadTimeout">Send/Read timeout when the connection is stale</param>
-    /// <param name="bufferSize">Size of the tcp buffer that determines the amount of bytes that is received/send per chunk</param>
-    /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
-    /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
-    /// <param name="throwInsteadOfReconnect">Throws exception on a tcp error instead of trying to reinitialize the tcp listener</param>
-    public TcpReadConnection(ISimpleNetworkingClientLogger logger, int port, TimeSpan sendReadTimeout, int bufferSize, IList<byte> stxCharacters = default, IList<byte> etxCharacters = default, bool throwInsteadOfReconnect = false) : base(logger, sendReadTimeout, bufferSize)
+    /// <param name="settings">Settings for the tcp client</param>
+    public TcpReadConnection(TcpClientSettings settings) : base(settings)
     {
-        _port = port;
-        _throwInsteadOfReconnect = throwInsteadOfReconnect;
-        _stxCharacters = stxCharacters;
-        _etxCharacters = etxCharacters;
+        
     }
 
     /// <summary>
-    /// Start listening for new incoming connections
+    /// Start listening for new incoming connections.
+    /// Will block until the listening socket has been started successfully or an exception has been thrown.
     /// </summary>
     public void StartListening()
     {
         _cancellationTokenSource = new CancellationTokenSource();
+        _startListeningCompletedEvent = new AutoResetEvent(false);
         _listenerTask = Task.Run(async () => await ConnectionListenerImpl(), _cancellationTokenSource.Token);
+        _startListeningCompletedEvent.WaitOne(Settings.SendReadTimeout);
     }
 
     private async Task ConnectionListenerImpl()
@@ -64,7 +55,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                 {
                     _cancellationTokenSource.Token.ThrowIfCancellationRequested();
 
-                    if (_pendingRequestActive && _tcpClient == default)
+                    if (_pendingRequestActive && TcpClient == default)
                         // tcp client has been disposed, indicating the last request has ended and the connection has been closed
                         _pendingRequestActive = false;
 
@@ -77,47 +68,55 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
 
                     if (_pendingRequestActive)
                     {
-                        _logger?.Warn($"A second pending request has been detected on port {_port}, which is not supported. The request will be ignored until the other request has ended");
+                        Settings.Logger?.Warn($"A second pending request has been detected on port {Settings.Port}, which is not supported. The request will be ignored until the other request has ended");
                         continue;
                     }
 
                     // First pending request is available
                     _pendingRequestActive = true;
-                    _logger?.Debug($"First pending request has been detected on port {_port}");
+                    Settings.Logger?.Debug($"First pending request has been detected on port {Settings.Port}");
                     
                     _tcpListener.BeginAcceptTcpClient(ar =>
                     {
                         try
                         {
-                            _tcpClient = ((TcpListener) ar.AsyncState).EndAcceptTcpClient(ar);
+                            TcpClient = ((TcpListener) ar.AsyncState).EndAcceptTcpClient(ar);
                             while (true)
                             {
                                 // Poll returns true if data is available or the connection is closed
-                                var pollResult = _tcpClient.Client.Poll(-1, SelectMode.SelectRead);
+                                var pollResult = TcpClient.Client.Poll(-1, SelectMode.SelectRead);
                                 if (_cancellationTokenSource.IsCancellationRequested)
                                     return;
 
-                                if (pollResult && _tcpClient.Client.Available == 0)
+                                // Theory of operation
+                                // ReadTcpDataAsString will try to read one message and put it in the MessageBuffer
+                                // Normally the message buffer will contain one message, but if multiple messages are received in one read, they will all be added to the MessageBuffer
+                                // If there are still messages from the previous read, they will be returned when calling ReadTcpDataAsString
+                                // When a leading length header has been send, we don't have to buffer messages and can just read to the end of the message based on the length header
+                                // So ReadTcpDataWithLengthHeaderAsString will just read until the end of the message
+                                
+                                if (MessageBuffer.Any())
+                                {
+                                    // Buffer still contains messages, process them
+                                    TryDataReceiveAndOnExecute();
+                                }
+                                else if (pollResult && TcpClient.Client.Available == 0)
                                 {
                                     // Connection has been closed by the remote party
                                     DisposeCurrentTcpClient();
                                     break;
                                 }
-                                else if (pollResult && _tcpClient.Client.Available > 0)
+                                else if (pollResult && (MessageBuffer.Any() || TcpClient.Client.Available > 0))
                                 {
-                                    // Data is available
-                                    var receivedData = ReadTcpDataAsString(_stxCharacters, _etxCharacters);
-                                    _logger?.Verbose($"Tcp Listener on port '{_port}' received the following data: {receivedData}");
-                                    OnDataReceived?.Invoke(receivedData);
-                                    if (OnDataReceived == default)
-                                        _logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
+                                    // New data is available
+                                    TryDataReceiveAndOnExecute();
                                 }
                                 else
                                 {
                                     // pollResult is false, indicating the connection is not readable. Treat it as dead and reestablish the connection.
-                                    var errorState = _tcpClient.Client.Poll(1, SelectMode.SelectError);
-                                    var writeState = _tcpClient.Client.Poll(1, SelectMode.SelectWrite);
-                                    _logger?.Verbose($"Connection is not readable so treat is as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
+                                    var errorState = TcpClient.Client.Poll(1, SelectMode.SelectError);
+                                    var writeState = TcpClient.Client.Poll(1, SelectMode.SelectWrite);
+                                    Settings.Logger?.Verbose($"Connection is not readable so treat is as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
                                     DisposeCurrentTcpClient();
                                     break;
                                 }
@@ -127,9 +126,9 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                         {
                             // This exception case usually should not happen, even during tcp errors and frequently indicates a premature disposal of the tcp socket
                             // The premature disposal can also be triggered by the OS if it force closes the connection due to an unhandled error
-                            _logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
+                            Settings.Logger?.Warn($"Failed to process BeginAcceptTcpClient async result. Connection has been closed/disposed abnormally by the app, OS, remote party, virus scanner, IDS ed.", ex);
                             DisposeCurrentTcpClient();
-                            if (_throwInsteadOfReconnect)
+                            if (Settings.ThrowInsteadOfReconnect)
                                 throw;
                         }
                     }, _tcpListener);
@@ -137,7 +136,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
             }
             catch (OperationCanceledException)
             {
-                _logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
+                Settings.Logger?.Verbose($"{nameof(TcpReadConnection)} Tcp Listener task has been successfully cancelled");
                 StopTcpListener();
                 return;
             }
@@ -145,19 +144,29 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
             {
                 if (ex.InnerException != default && ex.InnerException.GetType() == typeof(NetworkingException))
                 {
-                    _logger?.Error("Networking Exception has been received", ex.InnerException);
-                    if (_throwInsteadOfReconnect)
+                    Settings.Logger?.Error("Networking Exception has been received", ex.InnerException);
+                    if (Settings.ThrowInsteadOfReconnect)
                         throw;
                 }
                 else
                 {
-                    _logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {_port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
+                    Settings.Logger?.Error("TcpReadConnection.ConnectionListenerImpl() failed", new NetworkingException($"Failed to listen on local port {Settings.Port}. Make sure the port is not blocked or in use by another application", NetworkingException.NetworkingExceptionTypeEnum.ListeningError, ex));
                     StopTcpListener();
-                    if (_throwInsteadOfReconnect)
+                    if (Settings.ThrowInsteadOfReconnect)
                         throw;
                     await Task.Delay(TimeSpan.FromSeconds(10));
                 }
             }
+        }
+
+        void TryDataReceiveAndOnExecute()
+        {
+            string receivedData = TryReadTcpDataAsStringOrReadTcpDataWithLengthHeaderAsString();
+            
+            Settings.Logger?.Verbose($"Tcp Listener on port '{Settings.Port}' received the following data: {receivedData}");
+            OnDataReceived?.Invoke(receivedData);
+            if (OnDataReceived == default)
+                Settings.Logger?.Warn($"Property {nameof(OnDataReceived)} not set. Ignoring data that has been received thus far");
         }
     }
 
@@ -171,11 +180,12 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     /// </summary>
     private void StartTcpListener()
     {
-        _logger?.Verbose($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
+        Settings.Logger?.Verbose($"Attempting to start {nameof(TcpReadConnection)} Tcp Listener task");
         _tcpListener?.Stop();
-        _tcpListener = new TcpListener(IPAddress.Any, _port);
+        _tcpListener = new TcpListener(IPAddress.Any, Settings.Port);
         _tcpListener.Start();
-        _logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {_port} has been started successfully");
+        Settings.Logger?.Debug($"{nameof(TcpReadConnection)} Tcp Listener task on port {Settings.Port} has been started successfully");
+        _startListeningCompletedEvent.Set();
     }
 
     /// <summary>
@@ -185,15 +195,15 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     {
         try
         {
-            _logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
+            Settings.Logger?.Verbose($"Attempting to stop {nameof(TcpListener)}");
             DisposeCurrentTcpClient();
             _tcpListener?.Stop();
             _tcpListener = default;
-            _logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
+            Settings.Logger?.Verbose($"{nameof(TcpListener)} has stopped listening for new connections");
         }
         catch (Exception ex)
         {
-            _logger?.Error($"Failed to stop {nameof(TcpListener)}", ex);
+            Settings.Logger?.Error($"Failed to stop {nameof(TcpListener)}", ex);
         }
     }
 
@@ -204,7 +214,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
 
         try
         {
-            _listenerTask.Wait(_sendReadTimeout);
+            _listenerTask.Wait(Settings.SendReadTimeout);
         }
         catch (TaskCanceledException)
         {
