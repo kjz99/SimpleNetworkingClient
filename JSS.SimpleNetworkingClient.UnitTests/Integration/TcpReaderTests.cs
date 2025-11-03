@@ -16,12 +16,12 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
         private TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
 
         /// <summary>
-        /// Test that the TcpReadConnection can receive and respond asynchronously
+        /// Test that the TcpReadConnection can receive and respond asynchronously with a string
         /// </summary>
         /// <param name="testData">Data that will be transmitted from the sender to the receiver</param>
         [Theory]
         [InlineData("qwertyuiop")]
-        public void SimpleAsyncReadShouldSucceed(string testData)
+        public void SimpleAsyncStringReadShouldSucceed(string testData)
         {
             var are = new AutoResetEvent(false);
 
@@ -50,6 +50,59 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 using var sendConnection = new TcpSendConnection(DefaultSettings);
                 await sendConnection.SendData(testData, Encoding.UTF8);
+                sendConnection.ReceiveDataAsString().Should().Be("ACK");
+            });
+
+            if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
+                throw new TimeoutException("Send or receive task has not completed within the allotted time");
+
+            // Make sure that exceptions on other thread tasks fail the unit test
+            if (receiveTask.Exception != null)
+                throw receiveTask.Exception;
+            if (sendTask.Exception != null)
+                throw sendTask.Exception;
+        }
+        
+        /// <summary>
+        /// Test that the TcpReadConnection can receive and respond asynchronously with a byte array
+        /// </summary>
+        /// <param name="testData">Data that will be transmitted from the sender to the receiver</param>
+        [Theory]
+        [InlineData(new byte[] { 0x30, 0x31, 0x32, 0x33 })]
+        [InlineData(new byte[] { 0x30, 0x31, 0x03, 0x33 })]
+        public void SimpleAsyncByteArrayReadWithLengthHeaderShouldSucceed(byte[] testData)
+        {
+            var are = new AutoResetEvent(false);
+
+            // Start the receiving side
+            var receiveTask = Task.Run(async () =>
+            {
+                var settings = (TcpClientSettings)DefaultSettings.Clone();
+                settings.LeadingMessageLengthBytes = 1;
+                var dataReceived = new AutoResetEvent(false);
+                using var reader = new TcpReadConnection(settings);
+                reader.OnDataReceived = (returnedData) =>
+                {
+                    returnedData.Should().Be(Encoding.Default.GetString(testData));
+                    reader.SendData("ACK", Encoding.UTF8).Wait(_defaultTimeout);
+                    dataReceived.Set();
+                };
+
+                reader.StartListening();
+                are.Set();
+                dataReceived.WaitOne(_defaultTimeout);
+            });
+
+            // Wait for the receiver to start listening
+            are.WaitOne(5000);
+
+            // Start sending data
+            var sendTask = Task.Run(async () =>
+            {
+                var settings = (TcpClientSettings)DefaultSettings.Clone();
+                settings.LeadingMessageLengthBytes = 1;
+                using var sendConnection = new TcpSendConnection(settings);
+                await sendConnection.SendData(testData);
                 sendConnection.ReceiveDataAsString().Should().Be("ACK");
             });
 
