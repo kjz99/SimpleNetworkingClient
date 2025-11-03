@@ -60,7 +60,7 @@ public class TcpClientSettings : ICloneable
     public short LeadingMessageLengthBytes { get; set; }
 
     /// <summary>
-    /// True if the meading message length bytes are little endian, false if big endian.
+    /// True if the leading message length bytes are in little endian, false if they are in big endian.
     /// </summary>
     public bool LittleEndian { get; set; }
 

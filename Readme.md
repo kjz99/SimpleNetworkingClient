@@ -1,5 +1,5 @@
 # Introduction
-The JSS SimpleNetworkingClient is designed for simple point to point tcp connections. For example it can be used to control a payment terminal from a cash register application, running on a POS device.<br/>
+The JSS SimpleNetworkingClient is designed for simple point to point tcp connections. For example, it can be used to control a payment terminal from a cash register application, running on a POS device.<br/>
 It excels in its ease of use and straight forward functionality and alleviates you from the many problems that raw tcp communication presents.
 
 # For what scenarios is the SimpleNetworkingClient not designed?
@@ -43,18 +43,12 @@ var receivedDataFromReader = sendConnection.ReceiveDataAsString();
 Console.WriteLine($"Received data from reader: {receivedDataFromReader}"); 
 ```
 
-## Receiving and sending data with stx and etx characters
+## Receiving and sending data with a message length header
 The following example shows how to receive and send data using the SimpleNetworkingClient that starts with 1 to 4 bytes that indicate the total length of the message.</br>
-When the total number of bytes is received, it will return.
-```csharp
-using System.Text;
-using JSS.SimpleNetworkingClient;.
+When the total number of bytes is received, it will return with the data as a string.
 ```csharp
 using System.Text;
 using JSS.SimpleNetworkingClient;
-
-byte stxCharacter = 0x02;
-byte etxCharacter = 0x03;
 
 var settings = new TcpClientSettings()
 {
@@ -62,8 +56,10 @@ var settings = new TcpClientSettings()
     Port = 514,
     SendReadTimeout = TimeSpan.FromSeconds(30),
     IpStackBufferSize = 1024,
-    StxCharacters = [ stxCharacter ],
-    EtxCharacters = [ etxCharacter ]
+    StxCharacters = [ ],
+    EtxCharacters = [ ],
+    LeadingMessageLengthBytes = 4,
+    LittleEndian = false
 };
 
 using var reader = new TcpReadConnection(settings);
@@ -82,8 +78,8 @@ Console.WriteLine($"Received data from reader: {receivedDataFromReader}");
 ```
 
 ## Using the log4net logger
-To use the log4net logger you can instantiate the logger using one of the constructors.<br/>
-As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
+To use the log4net logger you can instantiate the logger setting the logging in the TcpClientSettings instance that you can pass to the constructor.<br/>
+As the Log4netLogger wrapper implements the ISimpleNetworkingClientLogger interface, it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
 
 ### Log4net example
 ```csharp
@@ -136,8 +132,8 @@ Console.WriteLine("Press any key to exit...");
 Console.ReadKey();
 ```
 ## Using the Serilog logger
-To use the serilog logger pass the ILogger instance to the SerilogLogger constructor.<br/>
-As the logger implements the ISimpleNetworkingClientLogger interface it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
+To use the Serilog logger you can instantiate the logger setting the logging in the TcpClientSettings instance that you can pass to the constructor.<br/>
+As the SerilogLogger wrapper implements the ISimpleNetworkingClientLogger interface, it can be passed the a TcpReadConnection or TcpSendConnection as the logging instance.
 
 ### Serilog example
 ```csharp
@@ -178,12 +174,12 @@ Console.ReadKey();
 ```
 
 # Unit/Integration Tests
-The JSS.SimpleNetworkingClient.UnitTests contains the unit tests.<br/>
-In the Unit subfolder all unit tests are located and in the integration subfolder all the integration and load tests are located.<br/>
+The JSS.SimpleNetworkingClient.UnitTests contains the unit and integration tests.<br/>
+In the Unit subfolder all unit tests are located and in the integration subfolder, all the integration and load tests are located.<br/>
 All the unit/integration tests are self contained and only need read/write access to tcp sockets on port 514.
 
 # Pitfalls
-## The TcpClient is not reliable on Windows
+## The .Net TcpClient is not reliable on Windows
 The TcpClient connection is not fully reliable on Windows. The Winsock tcp stack that is used by the .Net TcpClient, has known design deficiencies.<br/>
 It does not always detect that a remote party has closed the connection, leading to zombie connections.<br/>
 This can cause the TcpClient to think that the connection is still open. Reading from the stream will not return an exception.<br/>
@@ -191,15 +187,15 @@ Also, sending data will just be discarded by Winsock without any indication that
 Therefore, I highly recommend using a verification mechanism(eg, ping message) to detect if the connection has failed.
 
 ## Tcp/ip is a streaming protocol
-Tcp is a streaming protocol, meaning it will stream data from the source to the destination without any indication of the end of the stream.
-If multiple messages are sent slowly enough, the remote party will see these as separate messages.
-But when multiple messages are sent fast enough, they will appear as a single concatenated message on the remote party's side.
-This means that messages need to be split up using start/end of transmission character, or a message length header.
+Tcp is a streaming protocol, meaning it will stream data from the source to the destination without any indication to the end of the stream.</br>
+If multiple messages are sent slowly enough, the remote party will see these as separate messages.</br>
+But when multiple messages are sent fast enough, they will appear as a single concatenated message on the remote party's side.</br>
+This means that messages need to be split up using start/end of transmission character, or a message length header.</br>
 
-## When using STX/ETX characters, make sure they are not used in the data
-When using STX/ETX characters, make sure they are not used in the data.</br>
-For example, if you have an Int that is set to 2, this will be interpreted as the STX character.</br>
-
+## Numbers and UTF characters can be seen as the STX/ETX characters
+If you also send numbers as an actual number instead of an ascii string(0x30 up to 0x3A), the number 2 will be the same as an ascii STX character(0x02).</br>
+This can also happen when sending UTF characters, which consist of multiple bytes. Currently, the SimpleNetworkingClient does not support interpreting UTF characters as a 2-byte pair.</br>
+In these cases, using a message length header will be a better option than using a start/end of transmission character.
 
 # Licenses
 ## JSS.SimpleNetworkingClient
