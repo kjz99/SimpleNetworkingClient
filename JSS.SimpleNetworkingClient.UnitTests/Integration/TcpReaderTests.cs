@@ -58,15 +58,15 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
-        
+
         /// <summary>
         /// Test that the TcpReadConnection can receive and respond asynchronously with a byte array and a length header
         /// </summary>
         /// <param name="testData">Data that will be transmitted from the sender to the receiver</param>
         [Theory]
-        [InlineData(new byte[] { 0x30, 0x31, 0x32, 0x33 })]
-        [InlineData(new byte[] { 0x30, 0x31, 0x03, 0x33 })]
-        public void SimpleAsyncByteArrayReadWithLengthHeaderShouldSucceed(byte[] testData)
+        [InlineData(new byte[] { 0x30, 0x31, 0x32, 0x33 }, true)]
+        [InlineData(new byte[] { 0x30, 0x31, 0x03, 0x33 }, false)]
+        public void SimpleAsyncByteArrayReadWithLengthHeaderShouldSucceed(byte[] testData, bool includeLengthHeaderInData)
         {
             var are = new AutoResetEvent(false);
 
@@ -75,11 +75,16 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 var settings = (TcpClientSettings)TcpClientSettingFactory.DefaultSettings.Clone();
                 settings.LeadingMessageLengthBytes = 1;
+                settings.IncludeLengthHeaderInData = includeLengthHeaderInData;
                 var dataReceived = new AutoResetEvent(false);
                 using var reader = new TcpReadConnection(settings);
                 reader.OnDataReceived = (returnedData) =>
                 {
-                    returnedData.Should().Be(Encoding.Default.GetString(testData));
+                    if (includeLengthHeaderInData)
+                        returnedData.Should().Be(Encoding.Default.GetString(new byte[] { 0x7 }) + Encoding.Default.GetString(testData));
+                    else
+                        returnedData.Should().Be(Encoding.Default.GetString(testData));
+
                     reader.SendData(testData).Wait(TcpClientSettingFactory.DefaultSettings.SendReadTimeout);
                     dataReceived.Set();
                 };
@@ -97,9 +102,13 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             {
                 var settings = (TcpClientSettings)TcpClientSettingFactory.DefaultSettings.Clone();
                 settings.LeadingMessageLengthBytes = 1;
+                settings.IncludeLengthHeaderInData = includeLengthHeaderInData;
                 using var sendConnection = new TcpSendConnection(settings);
                 await sendConnection.SendData(testData);
-                sendConnection.ReceiveDataAsByteArray().Should().BeEquivalentTo(testData);
+                if (includeLengthHeaderInData)
+                    sendConnection.ReceiveDataAsByteArray().Should().BeEquivalentTo([0x7, ..testData]);
+                else
+                    sendConnection.ReceiveDataAsByteArray().Should().BeEquivalentTo(testData);
             });
 
             if (Task.WaitAll(new[] { receiveTask, sendTask }, 30000) == false)
@@ -111,7 +120,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             if (sendTask.Exception != null)
                 throw sendTask.Exception;
         }
-        
+
         /// <summary>
         /// Test that the TcpReadConnection can receive and respond asynchronously with a string and a length header
         /// </summary>
@@ -262,7 +271,7 @@ namespace JSS.SimpleNetworkingClient.UnitTests.Integration
             var sendTask = Task.Run(async () =>
             {
                 using var sendConnection = new TcpSendConnection(TcpClientSettingFactory.DefaultSettings);
-                
+
                 for (int i = 0; i < 100; i++)
                 {
                     await sendConnection.SendData(testData, Encoding.UTF8);

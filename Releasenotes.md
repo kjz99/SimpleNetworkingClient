@@ -1,6 +1,13 @@
 # Release Notes
 
-## Version 2.0.1 (Latest)
+## Version 2.0.2 (Latest)
+
+### Bug fixes
+- Added support for including the length header in received data via the new `IncludeLengthHeaderInData` setting
+- Updated handling in `TcpConnectionBase` to respect this setting and return data accordingly
+- Adjusted integration tests to validate the new feature
+
+## Version 2.0.1
 
 ### Bug fixes
 - Fixed bug that when calling sendConnection.ReceiveDataAsByteArray() it ignored the new functionality that uses a message header with length

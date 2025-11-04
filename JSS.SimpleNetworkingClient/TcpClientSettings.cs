@@ -64,6 +64,11 @@ public class TcpClientSettings : ICloneable
     /// </summary>
     public bool LittleEndian { get; set; }
 
+    /// <summary>
+    /// True to include the length header in the actual data. False to only return the actual data without the length header.
+    /// </summary>
+    public bool IncludeLengthHeaderInData { get; set; }
+
     /// <summary>Creates a new object that is a copy of the current instance.</summary>
     /// <returns>A new object that is a copy of this instance.</returns>
     public object Clone()
