@@ -84,6 +84,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                             while (true)
                             {
                                 // Poll returns true if data is available or the connection is closed
+                                // The -1 parameter means that the poll will block until data is available -or- the connection is closed -or- DisposeCurrentTcpClient is called externally from another thread
                                 var pollResult = TcpClient.Client.Poll(-1, SelectMode.SelectRead);
                                 if (_cancellationTokenSource.IsCancellationRequested)
                                     return;
@@ -104,6 +105,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                 {
                                     // Connection has been closed by the remote party
                                     DisposeCurrentTcpClient();
+                                    OnConnectionClosed?.Invoke();
                                     break;
                                 }
                                 else if (pollResult && (MessageBuffer.Any() || TcpClient.Client.Available > 0))
@@ -118,6 +120,7 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
                                     var writeState = TcpClient.Client.Poll(1, SelectMode.SelectWrite);
                                     Settings.Logger?.Verbose($"Connection is not readable so treat is as dead. Poll states: SelectError={errorState}, SelectRead={pollResult}, SelectWrite={writeState}");
                                     DisposeCurrentTcpClient();
+                                    OnConnectionClosed?.Invoke();
                                     break;
                                 }
                             }
@@ -174,6 +177,11 @@ public class TcpReadConnection : TcpConnectionBase, IDisposable
     /// Action that is executed when new data has been received
     /// </summary>
     public Action<string> OnDataReceived { get; set; }
+
+    /// <summary>
+    /// Action that is executed when a connection has been closed.
+    /// </summary>
+    public Action OnConnectionClosed { get; set; }
 
     /// <summary>
     /// Open the listening socket and start listening for the remote party

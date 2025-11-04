@@ -83,5 +83,20 @@ public class TcpSendConnection : TcpConnectionBase, IDisposable
     /// Data received from the remote party. If the stx/etx character has been set using the constructor, they will be removed from the begin/end of the received data string.
     /// </returns>
     public byte[] ReceiveDataAsByteArray()
-        => ReadTcpData(Settings.StxCharacters, Settings.EtxCharacters);
+    {
+        byte[] receivedData;
+        if (Settings.LeadingMessageLengthBytes > 0)
+        {
+            // TcpReadConnection has been configured to expect a length header before the actual data
+            var readTcpDataResultString = ReadTcpDataWithLengthHeader(Settings.StxCharacters, Settings.EtxCharacters);
+            if (readTcpDataResultString.Wait(Settings.SendReadTimeout))
+                receivedData = readTcpDataResultString.Result;
+            else
+                throw new NetworkingException($"{nameof(ReceiveDataAsByteArray)} timed out trying to attempt to read data", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+        }
+        else
+            receivedData = ReadTcpData(Settings.StxCharacters, Settings.EtxCharacters);
+        
+        return receivedData;
+    }
 }

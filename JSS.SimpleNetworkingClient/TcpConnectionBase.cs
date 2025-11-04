@@ -71,9 +71,11 @@ public abstract class TcpConnectionBase : IDisposable
         var payloadBytesRead = 0;
 
         // Check how many bytes will be send by the remote party
-        var lengthBuffer = new byte[Settings.LeadingMessageLengthBytes + stxCharacters.Length];
-        var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
-        if (lengtBytesRead != Settings.LeadingMessageLengthBytes)
+        var expectedLeadingBytes = Settings.LeadingMessageLengthBytes + stxCharacters.Length;
+        var lengthBuffer = new byte[expectedLeadingBytes];
+        var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, expectedLeadingBytes);
+        if (lengtBytesRead != expectedLeadingBytes)
+            throw new NetworkingException($"Leading message length bytes with STX character length({expectedLeadingBytes}) is shorter than the nr of bytes({lengtBytesRead}) received.", NetworkingException.NetworkingExceptionTypeEnum.InvalidDataStreamLength);
         
         // Check for the stx characters
         if (!lengthBuffer.AsSpan().StartsWith(stxCharacters.AsSpan()))
@@ -97,13 +99,15 @@ public abstract class TcpConnectionBase : IDisposable
         while (bytesRemaining > 0)
         {
             // Detect if the connection has been closed, reset or terminated. Stays true on Windows even after the remote party disconnected.
-            if (TcpClient.Connected == false)
+            if (PollTcpClient() == false)
                 throw new NetworkingException($"Networking socket has been closed by the remote party", NetworkingException.NetworkingExceptionTypeEnum.ConnectionAbortedPrematurely);
 
             // Check if the read has timed out. The TcpClient has a mechanism for this but it is not reliable
             if (DateTime.Now > _timeoutTimer + Settings.SendReadTimeout)
                 throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
 
+            // Read until the end of the nr of expected bytes based on the length header
+            // This means we don't have to take into account that multiple messages are present in the TcpClient stream
             actualBytesRead = await stream.ReadAsync(totalBuffer, payloadBytesRead, bytesToRead);
             payloadBytesRead += actualBytesRead;
             
@@ -168,18 +172,6 @@ public abstract class TcpConnectionBase : IDisposable
         // Read all the data until the tcp connection has been closed
         while (PollTcpClient())
         {
-            // Detect if there is an error on the socket
-            if (TcpClient.Client.Poll(1, SelectMode.SelectError))
-                throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
-
-            // Detect if the connection has been closed, reset or terminated
-            if (TcpClient.Client.Connected == false || TcpClient.Available == 0)
-                throw new NetworkingException($"Connection has been closed, reset or terminated", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
-
-            // Check if the read has timed out. The TcpClient.Connected mechanism is not reliable
-            if (DateTime.Now > _timeoutTimer + Settings.SendReadTimeout)
-                throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
-
             // Read available data and get the nr of bytes received
             var bytesRead = stream.Read(_loopBuffer, 0, Settings.IpStackBufferSize);
             
@@ -361,13 +353,31 @@ public abstract class TcpConnectionBase : IDisposable
     /// <summary>
     /// Polls the underlying winsock connection to detect if data can be read
     /// </summary>
-    /// <returns>True to indicate that data is available or the connection has been closed. False to indicate the connection is not readable</returns>
+    /// <returns>True to indicate that data is available or the connection is open. False to indicate the connection is not readable</returns>
     /// <remarks>
     /// IMPORTANT: The Poll method only blocks when the connection is established and data has yet to be send.
     /// That a .Net Socket is reported as being open does not mean that the full connection has been established yet
     /// </remarks>
     private bool PollTcpClient()
-        => TcpClient.Client.Poll(_sendReadTimeoutMicroseconds, SelectMode.SelectRead);
+    {
+        // Poll returns true if data is available or the connection is closed
+        // The _sendReadTimeoutMicroseconds parameter means that the poll will block until data is available -or- it times out -or- the connection is closed -or- DisposeCurrentTcpClient is called externally from another thread
+        var readAvailable = TcpClient.Client.Poll(_sendReadTimeoutMicroseconds, SelectMode.SelectRead);
+        
+        // Detect if there is an error on the socket
+        if (TcpClient.Client.Poll(1, SelectMode.SelectError))
+            throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
+
+        // Detect if the connection has been closed, reset or terminated
+        if (TcpClient.Client.Connected == false || TcpClient.Available == 0)
+            throw new NetworkingException($"Connection has been closed, reset or terminated", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
+
+        // Check if the read has timed out. The TcpClient.Connected mechanism is not reliable
+        if (DateTime.Now > _timeoutTimer + Settings.SendReadTimeout)
+            throw new NetworkingException($"Reading of tcp data timed out. Timeout set to {Settings.SendReadTimeout.TotalMilliseconds} ms", NetworkingException.NetworkingExceptionTypeEnum.ReadTimeout);
+
+        return readAvailable;
+    }
 
     /// <summary>
     /// Disposes the currently active tcp client(if any)
