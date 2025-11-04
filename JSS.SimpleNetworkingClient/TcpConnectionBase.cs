@@ -82,7 +82,8 @@ public abstract class TcpConnectionBase : IDisposable
             throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
         
         // Check if the remote party is actually going to return any data
-        var dataStreamTotalLength = TcpLengthUtils.GetMessageLength(lengthBuffer.Skip(Settings.StxCharacters.Length).ToArray(), (short)Settings.LeadingMessageLengthBytes!, Settings.LittleEndian);
+        var lengthBufferBytesWithoutStx = lengthBuffer.Skip(Settings.StxCharacters.Length).ToArray();
+        var dataStreamTotalLength = TcpLengthUtils.GetMessageLength(lengthBufferBytesWithoutStx, (short)Settings.LeadingMessageLengthBytes!, Settings.LittleEndian);
         Settings.Logger?.Debug($"According to the length bytes at the start of the message {dataStreamTotalLength} bytes have been read");
         if (dataStreamTotalLength == 0)
             return [];
@@ -139,7 +140,9 @@ public abstract class TcpConnectionBase : IDisposable
         Settings.Logger?.Verbose($"Total nr of {payloadBytesRead} bytes have been read");
 
         // Remove the stx and etx characters from the total buffer and then return it
-        return totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray();
+        return Settings.IncludeLengthHeaderInData 
+            ? [..lengthBufferBytesWithoutStx, ..totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray()]
+            : totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray();
     }
 
     /// <summary>
@@ -380,7 +383,7 @@ public abstract class TcpConnectionBase : IDisposable
     }
 
     /// <summary>
-    /// Disposes the currently active tcp client(if any)
+    /// Disposes the currently active tcp client (if any)
     /// </summary>
     protected void DisposeCurrentTcpClient()
     {
