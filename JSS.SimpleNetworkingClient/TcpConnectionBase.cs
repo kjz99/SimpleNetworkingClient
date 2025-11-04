@@ -71,9 +71,11 @@ public abstract class TcpConnectionBase : IDisposable
         var payloadBytesRead = 0;
 
         // Check how many bytes will be send by the remote party
-        var lengthBuffer = new byte[Settings.LeadingMessageLengthBytes + stxCharacters.Length];
-        var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, Settings.LeadingMessageLengthBytes + stxCharacters.Length);
-        if (lengtBytesRead != Settings.LeadingMessageLengthBytes)
+        var expectedLeadingBytes = Settings.LeadingMessageLengthBytes + stxCharacters.Length;
+        var lengthBuffer = new byte[expectedLeadingBytes];
+        var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, expectedLeadingBytes);
+        if (lengtBytesRead != expectedLeadingBytes)
+            throw new NetworkingException($"Leading message length bytes with STX character length({expectedLeadingBytes}) is shorter than the nr of bytes({lengtBytesRead}) received.", NetworkingException.NetworkingExceptionTypeEnum.InvalidDataStreamLength);
         
         // Check for the stx characters
         if (!lengthBuffer.AsSpan().StartsWith(stxCharacters.AsSpan()))
