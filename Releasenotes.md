@@ -1,6 +1,17 @@
 # Release Notes
 
-## Version 2.0.0 (Latest)
+## Version 2.0.1 (Latest)
+
+### Bug fixes
+- Fixed bug that when calling sendConnection.ReceiveDataAsByteArray() it ignored the new functionality that uses a message header with length
+- Fixed dangling if statement that should have thrown an error if the message length header could not be read. It also caused the STX check to be disabled if set
+
+### Improvements
+- Moved settings to generic class
+- Added test that checks that the tcp reader client properly disposes the connection
+- Moved PollTcpClient checks to its own function
+
+## Version 2.0.0
 
 ### Breaking Changes
 - The library had known design deficiencies that have been corrected. The library is now more robust and reliable. It is not fully backwards compatible with the v1.x.x release.
