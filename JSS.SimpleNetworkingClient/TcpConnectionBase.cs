@@ -120,7 +120,7 @@ public abstract class TcpConnectionBase : IDisposable
                 continue;
             }
             
-            Settings.Logger?.Verbose($"{payloadBytesRead} bytes have been read in total. Last chunk contains {actualBytesRead} bytes");
+            Settings.Logger?.Verbose($"{payloadBytesRead} bytes have been read. Last chunk contains {actualBytesRead} bytes");
             bytesRemaining -= actualBytesRead;
 
             bytesToRead = bytesRemaining > Settings.IpStackBufferSize
@@ -342,7 +342,7 @@ public abstract class TcpConnectionBase : IDisposable
 
             // Wait until the socket becomes ready to write any data
             if (TcpClient.Client.Poll(_pollWriteTimeout, SelectMode.SelectWrite) == false)
-                throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send in total. {nrOfBytesSend} bytes have actually been send.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
+                throw new NetworkingException($"Timeout waiting for the socket to become ready for sending data. {nrOfBytesToSend} bytes have to be send. {nrOfBytesSend} bytes have actually been send according to the operating system.", NetworkingException.NetworkingExceptionTypeEnum.WriteTimeout);
 
             // Select the chunck of data to be send without copying the array and send the data
             var sendOperation = TcpClient.Client.BeginSend(dataToSendWithHeader, nrOfBytesSend, nrOfBytesToSend, SocketFlags.None, _ => { }, TcpClient.Client);
