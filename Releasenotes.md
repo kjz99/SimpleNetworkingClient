@@ -1,5 +1,10 @@
 # Release Notes
 
+## Version 2.0.3 (Latest)
+
+### Bug fixes
+- Corrected typo in the nr of bytes read log statement
+
 ## Version 2.0.2 (Latest)
 
 ### Bug fixes
