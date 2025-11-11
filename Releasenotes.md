@@ -5,7 +5,7 @@
 ### Bug fixes
 - Corrected typo in the nr of bytes read log statement
 
-## Version 2.0.2 (Latest)
+## Version 2.0.2
 
 ### Bug fixes
 - Added support for including the length header in received data via the new `IncludeLengthHeaderInData` setting
