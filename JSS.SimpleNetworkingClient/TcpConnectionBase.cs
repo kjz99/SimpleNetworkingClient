@@ -23,7 +23,7 @@ public abstract class TcpConnectionBase : IDisposable
     protected readonly Queue<byte[]> MessageBuffer;
     protected readonly TcpClientSettings Settings;
     protected TcpClient TcpClient;
-    
+
     /// <summary>
     /// Ctor; Sets defaults for the connection base class
     /// </summary>
@@ -76,11 +76,11 @@ public abstract class TcpConnectionBase : IDisposable
         var lengtBytesRead = await stream.ReadAsync(lengthBuffer, 0, expectedLeadingBytes);
         if (lengtBytesRead != expectedLeadingBytes)
             throw new NetworkingException($"Leading message length bytes with STX character length({expectedLeadingBytes}) is shorter than the nr of bytes({lengtBytesRead}) received.", NetworkingException.NetworkingExceptionTypeEnum.InvalidDataStreamLength);
-        
+
         // Check for the stx characters
         if (!lengthBuffer.AsSpan().StartsWith(stxCharacters.AsSpan()))
             throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
-        
+
         // Check if the remote party is actually going to return any data
         var lengthBufferBytesWithoutStx = lengthBuffer.Skip(Settings.StxCharacters.Length).ToArray();
         var dataStreamTotalLength = TcpLengthUtils.GetMessageLength(lengthBufferBytesWithoutStx, (short)Settings.LeadingMessageLengthBytes!, Settings.LittleEndian);
@@ -111,7 +111,7 @@ public abstract class TcpConnectionBase : IDisposable
             // This means we don't have to take into account that multiple messages are present in the TcpClient stream
             actualBytesRead = await stream.ReadAsync(totalBuffer, payloadBytesRead, bytesToRead);
             payloadBytesRead += actualBytesRead;
-            
+
             // Check if we have actually read any bytes. If we read faster that the transmitting party, we could overtake it 
             if (actualBytesRead == 0)
             {
@@ -119,7 +119,7 @@ public abstract class TcpConnectionBase : IDisposable
                 await Task.Delay(1);
                 continue;
             }
-            
+
             Settings.Logger?.Verbose($"{payloadBytesRead} bytes have been read. Last chunk contains {actualBytesRead} bytes");
             bytesRemaining -= actualBytesRead;
 
@@ -136,12 +136,12 @@ public abstract class TcpConnectionBase : IDisposable
         // Validate if the etx characters have been received
         if (!totalBuffer.AsSpan(payloadBytesRead - Settings.EtxCharacters.Length, Settings.EtxCharacters.Length).SequenceEqual(etxCharacters.AsSpan()))
             throw new NetworkingException($"Parameter {nameof(etxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' but these bytes have not been found at the end of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
-            
+
         Settings.Logger?.Verbose($"Total nr of {payloadBytesRead} bytes have been read");
 
         // Remove the stx and etx characters from the total buffer and then return it
-        return Settings.IncludeLengthHeaderInData 
-            ? [..lengthBufferBytesWithoutStx, ..totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray()]
+        return Settings.IncludeLengthHeaderInData
+            ? [.. lengthBufferBytesWithoutStx, .. totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray()]
             : totalBuffer.AsSpan(0, payloadBytesRead - etxCharacters.Length).ToArray();
     }
 
@@ -151,9 +151,9 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>UTF8 formatted string with the data</returns>
-    protected async Task<string> ReadTcpDataWithLengthHeaderAsString(byte[] stxCharacters, byte[] etxCharacters) 
+    protected async Task<string> ReadTcpDataWithLengthHeaderAsString(byte[] stxCharacters, byte[] etxCharacters)
         => Encoding.UTF8.GetString(await ReadTcpDataWithLengthHeader(stxCharacters, etxCharacters));
-    
+
     /// <summary>
     /// Reads TCP data until the remote part closes the connection or the end of stream character is received
     /// </summary>
@@ -161,14 +161,14 @@ public abstract class TcpConnectionBase : IDisposable
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>byte array with the data</returns>
     /// <remarks>
-    /// I don't use a seperate thread for reading the data because this could cause a buffer overflow if the application that calls this method is too slow
+    /// I don't use a separate thread for reading the data because this could cause a buffer overflow if the application that calls this method is too slow
     /// </remarks>
     protected byte[] ReadTcpData(byte[] stxCharacters, byte[] etxCharacters)
     {
         // If there are any messages in the queue from the last time this method was called, return the first message in the queue
         if (MessageBuffer.Any())
             return MessageBuffer.Dequeue();
-        
+
         var stream = TcpClient.GetStream();
         _timeoutTimer = DateTime.Now;
 
@@ -177,22 +177,22 @@ public abstract class TcpConnectionBase : IDisposable
         {
             // Read available data and get the nr of bytes received
             var bytesRead = stream.Read(_loopBuffer, 0, Settings.IpStackBufferSize);
-            
+
             // Check that the singleMessageBuffer doesn't overflow
             if (_totalBytesRead + bytesRead > Settings.IpStackBufferSize)
                 throw new NetworkingException($"internal loopBuffer overflowed. Bytes read last={bytesRead}, Bytes read before last={_totalBytesRead}", NetworkingException.NetworkingExceptionTypeEnum.BufferOverflow);
-            
+
             // Add the bytes read to the end of the single message buffer
             Array.Copy(_loopBuffer, 0, _singleMessageBuffer, _totalBytesRead, bytesRead);
-            
+
             // Advance the total bytes read counter so that the next read will be copied to the proper position in the singleMessageBuffer
             _totalBytesRead += bytesRead;
-            
+
             // Check that the stream starts with the stx characters
             for (int i = 0; i < stxCharacters.Length; i++)
                 if (_singleMessageBuffer[i] != stxCharacters[i])
                     throw new NetworkingException($"Parameter {nameof(stxCharacters)} has been set with '{StringUtils.ByteEnumerableToHexString(stxCharacters)}' but these bytes have not been found at the start of transmission", NetworkingException.NetworkingExceptionTypeEnum.WrongStxEtxCharactersReceived);
-            
+
             while (true)
             {
                 // Search for the first etx characters in the stream, indicating one message has been received
@@ -201,12 +201,12 @@ public abstract class TcpConnectionBase : IDisposable
                 if (etxCharactersIndex > -1)
                 {
                     // Enqueue message for later processing without stx and etx characters
-                    Settings.Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Pushing message to queue. Message: {BitConverter.ToString([.. singleMessageBufferSpan[.. etxCharactersIndex]], 0, etxCharactersIndex)}");
-                    MessageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length .. etxCharactersIndex].ToArray());
+                    Settings.Logger?.Verbose($"End of stream character(s) '{StringUtils.ByteEnumerableToHexString(etxCharacters)}' have been detected. Pushing message to queue. Message: {BitConverter.ToString([.. singleMessageBufferSpan[..etxCharactersIndex]], 0, etxCharactersIndex)}");
+                    MessageBuffer.Enqueue(singleMessageBufferSpan[stxCharacters.Length..etxCharactersIndex].ToArray());
 
                     // Move remaining bytes to the start of the buffer.
                     Array.Copy(_singleMessageBuffer, etxCharactersIndex + 1, _singleMessageBuffer, 0, _singleMessageBuffer.Length - etxCharactersIndex - 1);
-                    
+
                     // Set the first available index of the singleMessageBuffer to after any remaining data that can be still in the buffer.
                     _totalBytesRead -= etxCharactersIndex + 1;
                     if (_totalBytesRead < 0)
@@ -218,23 +218,23 @@ public abstract class TcpConnectionBase : IDisposable
                     break;
                 }
             }
-            
+
             if (MessageBuffer.Any())
                 return MessageBuffer.Dequeue();
         }
-        
+
         return [];
     }
-    
+
     /// <summary>
     /// Reads TCP data until the remote part closes the connection or the end of stream character is received
     /// </summary>
     /// <param name="stxCharacters">Begin of transmission characters, Eg 0x02 for ASCII char STX. Set to default to disable to disable adding/removing stx characters</param>
     /// <param name="etxCharacters">End of transmission characters, Eg 0x03 for ASCII char ETX. Set to default to disable end of transmission checking</param>
     /// <returns>UTF8 formatted string with the data</returns>
-    protected string ReadTcpDataAsString(byte[] stxCharacters, byte[] etxCharacters) 
+    protected string ReadTcpDataAsString(byte[] stxCharacters, byte[] etxCharacters)
         => Encoding.UTF8.GetString([.. ReadTcpData(stxCharacters, etxCharacters)]);
-    
+
     protected string ReadTcpDataSocket(Socket socket)
     {
         _timeoutTimer = DateTime.Now;
@@ -285,7 +285,7 @@ public abstract class TcpConnectionBase : IDisposable
         }
         else
             receivedData = ReadTcpDataAsString(Settings.StxCharacters, Settings.EtxCharacters);
-        
+
         return receivedData;
     }
 
@@ -317,15 +317,16 @@ public abstract class TcpConnectionBase : IDisposable
 
         Settings.Logger?.Verbose($"Sending data: {BitConverter.ToString(dataToSend, 0, dataToSend.Length)}");
 
-        if (TcpClient == null) {
+        if (TcpClient == null)
+        {
             Settings.Logger?.Verbose($"SendData: Client not initialized");
             return;
         }
 
-        byte[] dataToSendWithHeader = Settings.LeadingMessageLengthBytes > 0 
-            ? [..Settings.StxCharacters, ..TcpLengthUtils.CreateMessageLengthHeader([..Settings.StxCharacters, ..dataToSend, ..Settings.EtxCharacters], Settings.LeadingMessageLengthBytes, Settings.LittleEndian), ..dataToSend, ..Settings.EtxCharacters] 
-            : [..Settings.StxCharacters, ..dataToSend, ..Settings.EtxCharacters];
-        
+        byte[] dataToSendWithHeader = Settings.LeadingMessageLengthBytes > 0
+            ? [.. Settings.StxCharacters, .. TcpLengthUtils.CreateMessageLengthHeader([.. Settings.StxCharacters, .. dataToSend, .. Settings.EtxCharacters], Settings.LeadingMessageLengthBytes, Settings.LittleEndian), .. dataToSend, .. Settings.EtxCharacters]
+            : [.. Settings.StxCharacters, .. dataToSend, .. Settings.EtxCharacters];
+
         while (nrOfBytesSend < dataToSendWithHeader.Length)
         {
             // Calculate initial send buffer size
@@ -366,12 +367,15 @@ public abstract class TcpConnectionBase : IDisposable
         // Poll returns true if data is available or the connection is closed
         // The _sendReadTimeoutMicroseconds parameter means that the poll will block until data is available -or- it times out -or- the connection is closed -or- DisposeCurrentTcpClient is called externally from another thread
         var readAvailable = TcpClient.Client.Poll(_sendReadTimeoutMicroseconds, SelectMode.SelectRead);
-        
+
         // Detect if there is an error on the socket
         if (TcpClient.Client.Poll(1, SelectMode.SelectError))
             throw new NetworkingException($"Networking socket is in an error state", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
 
         // Detect if the connection has been closed, reset or terminated
+        // Be aware that TcpClient.Client.Connected is not reliable and can remain true while the connection is actually closed. Reading/writing the stream frequently will not change this status in contrary what the .net documentation claims.
+        // If TcpClient.Client.Poll returned, it means that data is available, a timeout or the connection is unusable
+        // So in this case if TcpClient.Available == 0, this reliably means that the connection is dead
         if (TcpClient.Client.Connected == false || TcpClient.Available == 0)
             throw new NetworkingException($"Connection has been closed, reset or terminated", NetworkingException.NetworkingExceptionTypeEnum.SocketError);
 
